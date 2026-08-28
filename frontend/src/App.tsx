@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
 type BackendStatus = 'Checking...' | 'UP' | 'DOWN';
@@ -32,9 +32,33 @@ type SubmitAnswerResponse = {
   claim_id?: string;
 };
 
+type IngestionResponse = {
+  document_id: string;
+  version_id: string | null;
+  status: 'INGESTED' | 'UNCHANGED';
+  chunks_processed: number;
+  entities_created: number;
+  entities_reused: number;
+  claims_created: number;
+  claims_reused: number;
+  evidence_created: number;
+  claims_rejected: number;
+  unresolved_terms: string[];
+};
+
+type SourceDocument = {
+  id: string;
+  title: string;
+  filename: string;
+  latest_version: number;
+  current_content_hash: string;
+  updated_at: string;
+};
+
 const API_ROOT = 'http://localhost:8000';
 const HEALTH_URL = `${API_ROOT}/api/health`;
 const GAPS_URL = `${API_ROOT}/api/gaps`;
+const SOURCES_URL = `${API_ROOT}/api/sources/files`;
 
 export default function App() {
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('Checking...');
@@ -44,6 +68,11 @@ export default function App() {
   const [answer, setAnswer] = useState('');
   const [message, setMessage] = useState('');
   const [isBusy, setIsBusy] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [namespace, setNamespace] = useState('tstvs');
+  const [ingestionMessage, setIngestionMessage] = useState('');
+  const [documents, setDocuments] = useState<SourceDocument[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
 
   async function loadGaps() {
     try {
@@ -56,6 +85,18 @@ export default function App() {
       setGaps(openGaps);
     } catch {
       setMessage('Open gaps are unavailable.');
+    }
+  }
+
+  async function loadDocuments() {
+    try {
+      const response = await fetch(SOURCES_URL);
+      if (!response.ok) {
+        return;
+      }
+      setDocuments((await response.json()) as SourceDocument[]);
+    } catch {
+      // Keep document ingestion UI usable even when the list endpoint is temporarily unavailable.
     }
   }
 
@@ -81,6 +122,7 @@ export default function App() {
 
     void loadHealth();
     void loadGaps();
+    void loadDocuments();
   }, []);
 
   async function startCuration(gapId: string) {
@@ -146,6 +188,57 @@ export default function App() {
     }
   }
 
+  function selectFile(event: ChangeEvent<HTMLInputElement>) {
+    setSelectedFile(event.target.files?.[0] ?? null);
+    setIngestionMessage('');
+  }
+
+  async function uploadDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (selectedFile === null || namespace.trim() === '') {
+      return;
+    }
+
+    setIsUploading(true);
+    setIngestionMessage('');
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('namespace', namespace.trim());
+
+    try {
+      const response = await fetch(SOURCES_URL, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        if (response.status === 503) {
+          setIngestionMessage('Document ingestion is unavailable until AI is configured.');
+        } else if (response.status === 413) {
+          setIngestionMessage('The selected file exceeds the upload size limit.');
+        } else {
+          setIngestionMessage('Document ingestion failed.');
+        }
+        return;
+      }
+
+      const result = (await response.json()) as IngestionResponse;
+      if (result.status === 'UNCHANGED') {
+        setIngestionMessage('Document is unchanged; no extraction was run.');
+      } else {
+        setIngestionMessage(
+          `Ingested ${result.chunks_processed} chunk(s), created ${result.entities_created} entity/entities and ${result.claims_created} claim(s).`,
+        );
+      }
+      await loadDocuments();
+    } catch {
+      setIngestionMessage('Document ingestion failed.');
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   return (
     <main className="shell">
       <section className="status-card" aria-labelledby="page-title">
@@ -161,6 +254,38 @@ export default function App() {
             <dd>{neo4jStatus}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="status-card curator-card" aria-labelledby="ingestion-title">
+        <p className="eyebrow">Phase 4 Workflow</p>
+        <h2 id="ingestion-title">Document Ingestion</h2>
+        <p className="muted">Upload a synthetic PDF, DOCX, PPTX, TXT, or Markdown file for structured extraction.</p>
+
+        {ingestionMessage !== '' && <p className="message">{ingestionMessage}</p>}
+
+        <form className="answer-form" onSubmit={(event) => void uploadDocument(event)}>
+          <label htmlFor="source-file">Source document</label>
+          <input id="source-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFile} />
+          <label htmlFor="namespace">Namespace</label>
+          <input id="namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+          <button disabled={isUploading || selectedFile === null || namespace.trim() === ''} type="submit">
+            {isUploading ? 'Processing...' : 'Upload and Process'}
+          </button>
+        </form>
+
+        {documents.length > 0 && (
+          <div className="document-list">
+            {documents.map((document) => (
+              <article className="document-item" key={document.id}>
+                <div>
+                  <h3>{document.title}</h3>
+                  <p>{document.filename}</p>
+                </div>
+                <span className="badge">v{document.latest_version}</span>
+              </article>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="status-card curator-card" aria-labelledby="curator-title">

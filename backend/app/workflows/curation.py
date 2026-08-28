@@ -1,4 +1,3 @@
-import re
 from datetime import UTC, datetime
 from typing import Any, Literal, TypedDict
 
@@ -13,6 +12,7 @@ from app.domain.entity import Entity
 from app.domain.enums import ClaimStatus, EntityStatus, SourceType
 from app.domain.evidence import Evidence
 from app.domain.gap import KnowledgeGap
+from app.domain.identifiers import stable_entity_id
 from app.domain.source import KnowledgeSource
 from app.repositories.claim_repository import ClaimRepository
 from app.repositories.entity_repository import EntityRepository
@@ -41,11 +41,6 @@ class CurationState(TypedDict, total=False):
     _gap: dict[str, Any]
     _entity: dict[str, Any]
     _existing_claims: list[dict[str, Any]]
-
-
-def stable_entity_id(namespace: str, entity_type: str, canonical_name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", canonical_name.casefold()).strip("-")
-    return f"{namespace.casefold()}:{entity_type.casefold()}:{slug}"
 
 
 class CurationWorkflow:

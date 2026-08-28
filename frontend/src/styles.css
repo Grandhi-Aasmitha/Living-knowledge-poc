@@ -24,6 +24,10 @@ input {
   font: inherit;
 }
 
+input[type='file'] {
+  cursor: pointer;
+}
+
 .shell {
   display: grid;
   min-height: 100vh;
@@ -87,7 +91,8 @@ h3 {
 }
 
 .status-row,
-.gap-item {
+.gap-item,
+.document-item {
   display: flex;
   align-items: center;
   justify-content: space-between;

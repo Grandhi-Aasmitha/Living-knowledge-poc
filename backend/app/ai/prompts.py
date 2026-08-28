@@ -18,3 +18,8 @@ def get_question_generation_prompt() -> str:
 @lru_cache
 def get_answer_interpretation_prompt() -> str:
     return _read_prompt("curation/answer_interpretation/v1.md")
+
+
+@lru_cache
+def get_extraction_prompt() -> str:
+    return _read_prompt("extraction/v1.md")

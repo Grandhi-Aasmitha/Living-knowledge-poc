@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     azure_openai_api_key: SecretStr | None = None
     azure_openai_model: str | None = None
     langgraph_checkpoint_db: str = "data/langgraph_checkpoints.db"
+    upload_directory: str = "data/uploads"
+    max_upload_size_mb: int = 10
+    max_chunk_chars: int = 6000
+    max_chunks_per_document: int = 20
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
@@ -36,11 +40,11 @@ class Settings(BaseSettings):
             raise ValueError("ai_provider must be tabnine_cli or azure_openai")
         return value
 
-    @field_validator("tabnine_timeout_seconds")
+    @field_validator("tabnine_timeout_seconds", "max_upload_size_mb", "max_chunk_chars", "max_chunks_per_document")
     @classmethod
-    def tabnine_timeout_must_be_positive(cls, value: int) -> int:
+    def positive_integer_settings_must_be_positive(cls, value: int) -> int:
         if value <= 0:
-            raise ValueError("tabnine_timeout_seconds must be positive")
+            raise ValueError("numeric settings must be positive")
         return value
 
 

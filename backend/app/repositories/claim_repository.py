@@ -101,6 +101,35 @@ class ClaimRepository:
 
         return [_claim_from_node(record["claim"]) for record in records]
 
+    async def find_equivalent_active(
+        self,
+        subject_entity_id: str,
+        predicate: str,
+        object_entity_id: str | None,
+        object_value: str | None,
+        scope_entity_id: str | None,
+    ) -> Claim | None:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (claim:Claim {subject_entity_id: $subject_entity_id, predicate: $predicate})
+                WHERE claim.status IN ['PROPOSED', 'CONFIRMED']
+                  AND coalesce(claim.object_entity_id, '') = coalesce($object_entity_id, '')
+                  AND coalesce(claim.object_value, '') = coalesce($object_value, '')
+                  AND coalesce(claim.scope_entity_id, '') = coalesce($scope_entity_id, '')
+                RETURN claim
+                ORDER BY CASE claim.status WHEN 'CONFIRMED' THEN 0 ELSE 1 END, claim.created_at, claim.id
+                LIMIT 1
+                """,
+                subject_entity_id=subject_entity_id,
+                predicate=predicate,
+                object_entity_id=object_entity_id,
+                object_value=object_value,
+                scope_entity_id=scope_entity_id,
+            )
+            record = await result.single()
+        return None if record is None else _claim_from_node(record["claim"])
+
     async def add_evidence(self, evidence: Evidence) -> Evidence:
         async with self._client.session() as session:
             claim_result = await session.run(
@@ -119,18 +148,32 @@ class ClaimRepository:
             if source_record is None or not source_record["exists"]:
                 raise ValueError(f"KnowledgeSource does not exist: {evidence.source_id}")
 
+            if evidence.source_chunk_id is not None:
+                chunk_result = await session.run(
+                    "MATCH (chunk:SourceChunk {id: $id}) RETURN count(chunk) > 0 AS exists",
+                    id=evidence.source_chunk_id,
+                )
+                chunk_record = await chunk_result.single()
+                if chunk_record is None or not chunk_record["exists"]:
+                    raise ValueError(f"SourceChunk does not exist: {evidence.source_chunk_id}")
+
             result = await session.run(
                 """
                 MATCH (claim:Claim {id: $claim_id})
                 MATCH (source:KnowledgeSource {id: $source_id})
+                OPTIONAL MATCH (chunk:SourceChunk {id: $source_chunk_id})
                 MERGE (evidence:Evidence {id: $id})
                 ON CREATE SET evidence = $properties
                 MERGE (claim)-[:SUPPORTED_BY]->(evidence)
                 MERGE (evidence)-[:FROM_SOURCE]->(source)
+                FOREACH (_ IN CASE WHEN chunk IS NULL THEN [] ELSE [1] END |
+                    MERGE (evidence)-[:FROM_CHUNK]->(chunk)
+                )
                 RETURN evidence
                 """,
                 claim_id=evidence.claim_id,
                 source_id=evidence.source_id,
+                source_chunk_id=evidence.source_chunk_id,
                 id=evidence.id,
                 properties=evidence.model_dump(mode="json"),
             )
