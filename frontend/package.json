@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "cytoscape": "^3.34.2",
     "react": "latest",
     "react-dom": "latest"
   },

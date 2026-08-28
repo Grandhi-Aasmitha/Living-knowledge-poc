@@ -14,6 +14,7 @@ from app.ai.question_generator import QuestionGenerator
 from app.api.curation import router as curation_router
 from app.api.entities import router as entities_router
 from app.api.gaps import router as gaps_router
+from app.api.graph import router as graph_router
 from app.api.health import router as health_router
 from app.api.sources import router as sources_router
 from app.config import REPOSITORY_ROOT, get_settings
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
     app.include_router(gaps_router)
     app.include_router(curation_router)
     app.include_router(sources_router)
+    app.include_router(graph_router)
     return app
 
 

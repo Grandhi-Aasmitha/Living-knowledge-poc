@@ -1,5 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 
+import { GraphExplorer } from './components/GraphExplorer';
+
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
 type BackendStatus = 'Checking...' | 'UP' | 'DOWN';
 
@@ -255,6 +257,8 @@ export default function App() {
           </div>
         </dl>
       </section>
+
+      <GraphExplorer apiRoot={API_ROOT} />
 
       <section className="status-card curator-card" aria-labelledby="ingestion-title">
         <p className="eyebrow">Phase 4 Workflow</p>

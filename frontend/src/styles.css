@@ -172,3 +172,149 @@ button:disabled {
   color: #f8fafc;
   padding: 0.875rem 1rem;
 }
+
+.graph-card {
+  width: min(100%, 76rem);
+  display: grid;
+  gap: 1rem;
+}
+
+.graph-filters,
+.graph-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.875rem;
+}
+
+.graph-filters label,
+.graph-filters fieldset {
+  display: grid;
+  gap: 0.4rem;
+  color: #f8fafc;
+  font-weight: 700;
+}
+
+.graph-filters fieldset {
+  margin: 0;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 0.75rem;
+}
+
+.graph-filters legend {
+  color: #cbd5e1;
+  font-size: 0.85rem;
+}
+
+.graph-filters input,
+.graph-filters select {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 0.75rem;
+  background: rgba(15, 23, 42, 0.8);
+  color: #f8fafc;
+  padding: 0.75rem 0.9rem;
+}
+
+.inline-option {
+  display: inline-flex !important;
+  grid-template-columns: auto auto;
+  align-items: center;
+  margin-right: 0.75rem;
+  color: #cbd5e1 !important;
+  font-size: 0.85rem;
+}
+
+.graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
+  gap: 1rem;
+}
+
+.graph-container {
+  min-height: 600px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 1rem;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(96, 165, 250, 0.14), transparent 18rem),
+    rgba(2, 6, 23, 0.72);
+  overflow: hidden;
+}
+
+.graph-details {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+  max-height: 600px;
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 1rem;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.details-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0.75rem 0;
+}
+
+.details-list div {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.details-list dd,
+.relationship-list {
+  overflow-wrap: anywhere;
+}
+
+.relationship-list,
+.evidence-list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.relationship-list li,
+.evidence-item {
+  padding: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0.75rem;
+  background: rgba(30, 41, 59, 0.72);
+}
+
+.relationship-list span {
+  color: #93c5fd;
+  font-weight: 800;
+}
+
+.relationship-list em {
+  color: #bfdbfe;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.claim-details {
+  display: grid;
+  gap: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  padding-top: 1rem;
+}
+
+.evidence-item p {
+  margin: 0.5rem 0 0;
+  color: #cbd5e1;
+}
+
+@media (max-width: 900px) {
+  .graph-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-details {
+    max-height: none;
+  }
+}
