@@ -51,3 +51,24 @@ class EntityRepository:
             record = await result.single()
 
         return bool(record is not None and record["exists"])
+
+    async def find_by_name_or_alias(self, name: str, namespace: str) -> Entity | None:
+        normalized_name = name.casefold()
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (entity:Entity {namespace: $namespace})
+                WHERE toLower(entity.canonical_name) = $name
+                   OR any(alias IN coalesce(entity.aliases, []) WHERE toLower(alias) = $name)
+                RETURN entity
+                ORDER BY entity.id
+                LIMIT 1
+                """,
+                name=normalized_name,
+                namespace=namespace,
+            )
+            record = await result.single()
+
+        if record is None:
+            return None
+        return _entity_from_node(record["entity"])

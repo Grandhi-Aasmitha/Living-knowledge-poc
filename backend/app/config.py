@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,6 +16,10 @@ class Settings(BaseSettings):
     neo4j_password: str
     neo4j_database: str
     frontend_origin: str
+    azure_openai_endpoint: str | None = None
+    azure_openai_api_key: SecretStr | None = None
+    azure_openai_model: str | None = None
+    langgraph_checkpoint_db: str = "data/langgraph_checkpoints.db"
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,

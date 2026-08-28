@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
 type BackendStatus = 'Checking...' | 'UP' | 'DOWN';
@@ -8,11 +8,56 @@ type HealthResponse = {
   neo4j: 'UP' | 'DOWN';
 };
 
-const HEALTH_URL = 'http://localhost:8000/api/health';
+type KnowledgeGap = {
+  id: string;
+  entity_id: string;
+  gap_type: string;
+  description: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  status: 'OPEN' | 'RESOLVED' | 'SKIPPED';
+};
+
+type StartCurationResponse = {
+  workflow_id: string;
+  gap_id: string;
+  status: 'WAITING_FOR_HUMAN';
+  question: string;
+};
+
+type SubmitAnswerResponse = {
+  workflow_id: string;
+  status: 'RESOLVED' | 'NEEDS_REVIEW';
+  gap_id?: string;
+  entity_id?: string;
+  claim_id?: string;
+};
+
+const API_ROOT = 'http://localhost:8000';
+const HEALTH_URL = `${API_ROOT}/api/health`;
+const GAPS_URL = `${API_ROOT}/api/gaps`;
 
 export default function App() {
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('Checking...');
   const [neo4jStatus, setNeo4jStatus] = useState<Neo4jStatus>('Checking...');
+  const [gaps, setGaps] = useState<KnowledgeGap[]>([]);
+  const [curation, setCuration] = useState<StartCurationResponse | null>(null);
+  const [answer, setAnswer] = useState('');
+  const [message, setMessage] = useState('');
+  const [isBusy, setIsBusy] = useState(false);
+
+  async function loadGaps() {
+    try {
+      const response = await fetch(GAPS_URL);
+      if (!response.ok) {
+        setMessage('Open gaps are unavailable.');
+        return;
+      }
+      const openGaps = (await response.json()) as KnowledgeGap[];
+      setGaps(openGaps);
+    } catch {
+      setMessage('Open gaps are unavailable.');
+    }
+  }
 
   useEffect(() => {
     async function loadHealth() {
@@ -35,12 +80,76 @@ export default function App() {
     }
 
     void loadHealth();
+    void loadGaps();
   }, []);
+
+  async function startCuration(gapId: string) {
+    setIsBusy(true);
+    setMessage('');
+    setCuration(null);
+    setAnswer('');
+
+    try {
+      const response = await fetch(`${API_ROOT}/api/curation/gaps/${encodeURIComponent(gapId)}/start`, {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        setMessage(response.status === 503 ? 'Knowledge curation is unavailable until AI is configured.' : 'Could not start curation.');
+        return;
+      }
+
+      setCuration((await response.json()) as StartCurationResponse);
+    } catch {
+      setMessage('Could not start curation.');
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function submitAnswer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (curation === null || answer.trim() === '') {
+      return;
+    }
+
+    setIsBusy(true);
+    setMessage('');
+
+    try {
+      const response = await fetch(`${API_ROOT}/api/curation/workflows/${curation.workflow_id}/answer`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answer }),
+      });
+
+      if (!response.ok) {
+        setMessage('Could not submit the answer.');
+        return;
+      }
+
+      const result = (await response.json()) as SubmitAnswerResponse;
+      if (result.status === 'RESOLVED') {
+        setMessage('Knowledge updated successfully.');
+        setCuration(null);
+        setAnswer('');
+        await loadGaps();
+        return;
+      }
+
+      setMessage('The answer could not be converted into confirmed knowledge. The gap remains open.');
+      await loadGaps();
+    } catch {
+      setMessage('Could not submit the answer.');
+    } finally {
+      setIsBusy(false);
+    }
+  }
 
   return (
     <main className="shell">
       <section className="status-card" aria-labelledby="page-title">
-        <p className="eyebrow">Phase 1 Bootstrap</p>
+        <p className="eyebrow">Living Knowledge</p>
         <h1 id="page-title">Living Knowledge POC</h1>
         <dl className="status-list">
           <div className="status-row">
@@ -52,6 +161,47 @@ export default function App() {
             <dd>{neo4jStatus}</dd>
           </div>
         </dl>
+      </section>
+
+      <section className="status-card curator-card" aria-labelledby="curator-title">
+        <p className="eyebrow">Phase 3 Workflow</p>
+        <h2 id="curator-title">Knowledge Curator</h2>
+
+        {message !== '' && <p className="message">{message}</p>}
+
+        {gaps.length === 0 ? (
+          <p className="muted">No open knowledge gaps.</p>
+        ) : (
+          <div className="gap-list">
+            {gaps.map((gap) => (
+              <article className="gap-item" key={gap.id}>
+                <div>
+                  <h3>{gap.gap_type}</h3>
+                  <p>{gap.description}</p>
+                  <span className="badge">{gap.priority}</span>
+                </div>
+                <button disabled={isBusy} type="button" onClick={() => void startCuration(gap.id)}>
+                  Resolve
+                </button>
+              </article>
+            ))}
+          </div>
+        )}
+
+        {curation !== null && (
+          <form className="answer-form" onSubmit={(event) => void submitAnswer(event)}>
+            <label htmlFor="engineer-answer">{curation.question}</label>
+            <input
+              id="engineer-answer"
+              value={answer}
+              onChange={(event) => setAnswer(event.target.value)}
+              placeholder="Scheduler Service"
+            />
+            <button disabled={isBusy || answer.trim() === ''} type="submit">
+              Submit Answer
+            </button>
+          </form>
+        )}
       </section>
     </main>
   );

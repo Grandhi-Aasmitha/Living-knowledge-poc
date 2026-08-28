@@ -3,6 +3,10 @@
 .env.*
 !.env.example
 
+# Runtime data
+data/*.db
+data/*.db-*
+
 # Python
 __pycache__/
 *.py[cod]
