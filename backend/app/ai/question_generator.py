@@ -1,8 +1,6 @@
 import json
-from typing import Any
 
-from pydantic_ai import Agent
-
+from app.ai.client import StructuredAIClient
 from app.ai.models import QuestionDraft
 from app.ai.prompts import get_question_generation_prompt
 from app.domain.claim import Claim
@@ -11,12 +9,8 @@ from app.domain.gap import KnowledgeGap
 
 
 class QuestionGenerator:
-    def __init__(self, model: Any) -> None:
-        self._agent = Agent(
-            model,
-            output_type=QuestionDraft,
-            instructions=get_question_generation_prompt(),
-        )
+    def __init__(self, ai_client: StructuredAIClient) -> None:
+        self._ai_client = ai_client
 
     async def generate(
         self,
@@ -43,5 +37,12 @@ class QuestionGenerator:
                 for claim in existing_claims
             ],
         }
-        result = await self._agent.run(json.dumps(context, sort_keys=True))
-        return result.output
+        separator = chr(10) + chr(10)
+        prompt = separator.join(
+            [
+                get_question_generation_prompt(),
+                "Context JSON:",
+                json.dumps(context, sort_keys=True),
+            ]
+        )
+        return await self._ai_client.generate_structured(prompt, QuestionDraft)

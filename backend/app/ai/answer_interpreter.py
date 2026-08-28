@@ -1,8 +1,6 @@
 import json
-from typing import Any
 
-from pydantic_ai import Agent
-
+from app.ai.client import StructuredAIClient
 from app.ai.models import AnswerInterpretation
 from app.ai.prompts import get_answer_interpretation_prompt
 from app.domain.entity import Entity
@@ -10,12 +8,8 @@ from app.domain.gap import KnowledgeGap
 
 
 class AnswerInterpreter:
-    def __init__(self, model: Any) -> None:
-        self._agent = Agent(
-            model,
-            output_type=AnswerInterpretation,
-            instructions=get_answer_interpretation_prompt(),
-        )
+    def __init__(self, ai_client: StructuredAIClient) -> None:
+        self._ai_client = ai_client
 
     async def interpret(
         self,
@@ -38,5 +32,12 @@ class AnswerInterpreter:
                 "entity_type": entity.entity_type,
             },
         }
-        result = await self._agent.run(json.dumps(context, sort_keys=True))
-        return result.output
+        separator = chr(10) + chr(10)
+        prompt = separator.join(
+            [
+                get_answer_interpretation_prompt(),
+                "Context JSON:",
+                json.dumps(context, sort_keys=True),
+            ]
+        )
+        return await self._ai_client.generate_structured(prompt, AnswerInterpretation)

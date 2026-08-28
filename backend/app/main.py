@@ -7,8 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
+from app.ai.client import AIProviderError
 from app.ai.answer_interpreter import AnswerInterpreter
-from app.ai.model import build_ai_model
+from app.ai.provider import build_structured_ai_client
 from app.ai.question_generator import QuestionGenerator
 from app.api.curation import router as curation_router
 from app.api.entities import router as entities_router
@@ -37,7 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         database=settings.neo4j_database,
     )
     app.state.curation_workflow = None
-    app.state.curation_unavailable_reason = "Azure OpenAI configuration is incomplete"
+    app.state.curation_unavailable_reason = "AI provider is unavailable"
     app.state.langgraph_checkpointer_context = None
 
     try:
@@ -48,8 +49,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     except Exception:
         logger.exception("Neo4j schema initialization failed; continuing application startup")
 
-    ai_model = build_ai_model(settings)
-    if ai_model is not None:
+    try:
+        ai_client = build_structured_ai_client(settings)
         checkpoint_path = REPOSITORY_ROOT / settings.langgraph_checkpoint_db
         checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         checkpointer_context = AsyncSqliteSaver.from_conn_string(str(checkpoint_path))
@@ -62,11 +63,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             claim_repository=ClaimRepository(app.state.neo4j),
             source_repository=SourceRepository(app.state.neo4j),
             gap_repository=GapRepository(app.state.neo4j),
-            question_generator=QuestionGenerator(ai_model),
-            answer_interpreter=AnswerInterpreter(ai_model),
+            question_generator=QuestionGenerator(ai_client),
+            answer_interpreter=AnswerInterpreter(ai_client),
             checkpointer=checkpointer,
         )
         app.state.curation_unavailable_reason = None
+    except AIProviderError as error:
+        app.state.curation_unavailable_reason = str(error)
+        logger.warning("Curation workflow unavailable: %s", error)
 
     try:
         yield

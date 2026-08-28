@@ -4,6 +4,8 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
+from app.ai.client import AIProviderError
+
 
 router = APIRouter(prefix="/api/curation", tags=["curation"])
 
@@ -38,7 +40,7 @@ class SubmitAnswerResponse(BaseModel):
 def _get_workflow(request: Request) -> Any:
     workflow = getattr(request.app.state, "curation_workflow", None)
     if workflow is None:
-        reason = getattr(request.app.state, "curation_unavailable_reason", "AI configuration is incomplete")
+        reason = getattr(request.app.state, "curation_unavailable_reason", "AI provider is unavailable")
         raise HTTPException(status_code=503, detail=reason)
     return workflow
 
@@ -64,6 +66,8 @@ async def start_curation(gap_id: str, request: Request) -> StartCurationResponse
     workflow_id = str(uuid4())
     try:
         result = await workflow.start(workflow_id=workflow_id, gap_id=gap_id)
+    except AIProviderError as error:
+        raise HTTPException(status_code=502, detail="AI provider failed to generate structured output") from error
     except ValueError as error:
         _raise_for_workflow_error(error)
 
@@ -89,6 +93,8 @@ async def submit_answer(
         if not await workflow.has_checkpoint(workflow_id):
             raise HTTPException(status_code=404, detail="Workflow not found")
         result = await workflow.answer(workflow_id=workflow_id, answer=body.answer)
+    except AIProviderError as error:
+        raise HTTPException(status_code=502, detail="AI provider failed to generate structured output") from error
     except ValueError as error:
         _raise_for_workflow_error(error)
 
