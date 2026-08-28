@@ -1,22 +1,16 @@
-import os
 from types import SimpleNamespace
-
-os.environ.setdefault("NEO4J_URI", "bolt://localhost:7687")
-os.environ.setdefault("NEO4J_USERNAME", "neo4j")
-os.environ.setdefault("NEO4J_PASSWORD", "test-password")
-os.environ.setdefault("NEO4J_DATABASE", "neo4j")
-os.environ.setdefault("FRONTEND_ORIGIN", "http://localhost:5173")
 
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.db.neo4j import get_neo4j_client
-from app.main import create_app
 
 
 def make_client(ping_result: bool) -> TestClient:
     async def ping() -> bool:
         return ping_result
+
+    from app.main import create_app
 
     get_settings.cache_clear()
     app = create_app()
@@ -24,7 +18,16 @@ def make_client(ping_result: bool) -> TestClient:
     return TestClient(app)
 
 
-def test_health_returns_up_when_neo4j_ping_succeeds() -> None:
+def set_required_environment(monkeypatch) -> None:
+    monkeypatch.setenv("NEO4J_URI", "bolt://localhost:7687")
+    monkeypatch.setenv("NEO4J_USERNAME", "neo4j")
+    monkeypatch.setenv("NEO4J_PASSWORD", "test-password")
+    monkeypatch.setenv("NEO4J_DATABASE", "neo4j")
+    monkeypatch.setenv("FRONTEND_ORIGIN", "http://localhost:5173")
+
+
+def test_health_returns_up_when_neo4j_ping_succeeds(monkeypatch) -> None:
+    set_required_environment(monkeypatch)
     client = make_client(ping_result=True)
 
     response = client.get("/api/health")
@@ -33,7 +36,8 @@ def test_health_returns_up_when_neo4j_ping_succeeds() -> None:
     assert response.json() == {"status": "UP", "neo4j": "UP"}
 
 
-def test_health_returns_degraded_when_neo4j_ping_fails() -> None:
+def test_health_returns_degraded_when_neo4j_ping_fails(monkeypatch) -> None:
+    set_required_environment(monkeypatch)
     client = make_client(ping_result=False)
 
     response = client.get("/api/health")

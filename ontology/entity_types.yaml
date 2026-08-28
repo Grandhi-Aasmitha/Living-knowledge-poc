@@ -1,0 +1,15 @@
+entity_types:
+  - DOMAIN
+  - TEAM
+  - SYSTEM
+  - SERVICE
+  - API
+  - TOPIC
+  - SCHEDULER
+  - DATABASE
+  - TABLE
+  - COLUMN
+  - BUSINESS_CONCEPT
+  - FLOW
+  - DOCUMENT
+  - EXTERNAL_SYSTEM
