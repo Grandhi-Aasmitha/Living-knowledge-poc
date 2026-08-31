@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 
 import { ConflictReview } from './components/ConflictReview';
 import { GraphExplorer } from './components/GraphExplorer';
+import { KnowledgeAssistant } from './components/KnowledgeAssistant';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
 type BackendStatus = 'Checking...' | 'UP' | 'DOWN';
@@ -290,6 +291,8 @@ export default function App() {
           </div>
         </dl>
       </section>
+
+      <KnowledgeAssistant apiRoot={API_ROOT} />
 
       <GraphExplorer apiRoot={API_ROOT} />
 

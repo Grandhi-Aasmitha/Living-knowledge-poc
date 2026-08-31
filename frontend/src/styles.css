@@ -20,12 +20,17 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
 input[type='file'] {
   cursor: pointer;
+}
+
+textarea {
+  resize: vertical;
 }
 
 .shell {
@@ -175,7 +180,8 @@ button:disabled {
   font-weight: 700;
 }
 
-.answer-form input {
+.answer-form input,
+.answer-form textarea {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.32);
   border-radius: 0.75rem;
@@ -390,4 +396,81 @@ button:disabled {
   background: rgba(15, 23, 42, 0.8);
   color: #f8fafc;
   padding: 0.75rem 0.9rem;
+}
+
+.assistant-card,
+.assistant-response {
+  display: grid;
+  gap: 1rem;
+}
+
+.knowledge-status {
+  width: fit-content;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.knowledge-status-confirmed {
+  background: rgba(34, 197, 94, 0.16);
+  color: #bbf7d0;
+}
+
+.knowledge-status-proposed {
+  background: rgba(250, 204, 21, 0.16);
+  color: #fef08a;
+}
+
+.knowledge-status-incomplete {
+  background: rgba(148, 163, 184, 0.16);
+  color: #e2e8f0;
+}
+
+.knowledge-status-conflicting {
+  background: rgba(248, 113, 113, 0.16);
+  color: #fecaca;
+}
+
+.assistant-answer {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.05rem;
+  line-height: 1.6;
+}
+
+.compact-list,
+.citation-list {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.compact-list li,
+.citation-card {
+  padding: 0.85rem;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0.8rem;
+  background: rgba(30, 41, 59, 0.72);
+}
+
+.citation-card {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.citation-card p {
+  margin: 0;
+  color: #cbd5e1;
+}
+
+.citation-card blockquote {
+  margin: 0.35rem 0 0;
+  padding-left: 0.75rem;
+  border-left: 3px solid rgba(96, 165, 250, 0.75);
+  color: #e2e8f0;
 }

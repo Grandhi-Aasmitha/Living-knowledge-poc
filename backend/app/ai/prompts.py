@@ -23,3 +23,13 @@ def get_answer_interpretation_prompt() -> str:
 @lru_cache
 def get_extraction_prompt() -> str:
     return _read_prompt("extraction/v1.md")
+
+
+@lru_cache
+def get_assistant_query_planning_prompt() -> str:
+    return _read_prompt("assistant/query_planning/v1.md")
+
+
+@lru_cache
+def get_assistant_answer_generation_prompt() -> str:
+    return _read_prompt("assistant/answer_generation/v1.md")

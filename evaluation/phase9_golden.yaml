@@ -1,0 +1,100 @@
+cases:
+  - id: owner-service
+    question: Who owns Eval Service?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-service
+    required_claim_ids:
+      - phase9-eval:claim:owns
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: CONFIRMED
+  - id: producer-topic
+    question: What does Eval Service produce?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-service
+    required_claim_ids:
+      - phase9-eval:claim:produces
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: CONFIRMED
+  - id: consumer-topic
+    question: What consumes Eval Topic?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:topic:eval-topic
+    required_claim_ids:
+      - phase9-eval:claim:consumes
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: CONFIRMED
+  - id: broad-summary
+    question: Tell me about Eval Service.
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-service
+    required_claim_ids:
+      - phase9-eval:claim:owns
+      - phase9-eval:claim:produces
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: PROPOSED
+  - id: proposed-fact
+    question: What does Eval Consumer call?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-consumer
+    required_claim_ids:
+      - phase9-eval:claim:proposed-call
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: PROPOSED
+  - id: unknown-fact
+    question: What database does Eval Service write to?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-service
+    required_claim_ids: []
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: true
+    expected_knowledge_status: INCOMPLETE
+  - id: open-gap
+    question: What consumes Eval Gap Topic?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:topic:eval-gap-topic
+    required_claim_ids: []
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: true
+    expected_knowledge_status: INCOMPLETE
+  - id: open-conflict
+    question: Who owns Eval Conflict Service?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-conflict-service
+    required_claim_ids:
+      - phase9-eval:claim:conflict-a
+      - phase9-eval:claim:conflict-b
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: CONFLICTING
+  - id: alias-resolution
+    question: Who owns Eval App?
+    namespace: phase9-eval
+    expected_entity_ids:
+      - phase9-eval:service:eval-service
+    required_claim_ids:
+      - phase9-eval:claim:owns
+    forbidden_claim_ids: []
+    expect_insufficient_knowledge: false
+    expected_knowledge_status: CONFIRMED
+  - id: namespace-isolation
+    question: Who owns Eval Service?
+    namespace: phase9-other
+    expected_entity_ids: []
+    required_claim_ids: []
+    forbidden_claim_ids:
+      - phase9-eval:claim:owns
+    expect_insufficient_knowledge: true
+    expected_knowledge_status: INCOMPLETE

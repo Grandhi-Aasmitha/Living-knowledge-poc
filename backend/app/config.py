@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     max_chunk_chars: int = 6000
     max_chunks_per_document: int = 20
+    assistant_max_claims: int = 25
+    assistant_max_evidence_per_claim: int = 2
+    assistant_max_evidence_chars: int = 600
+    assistant_max_context_chars: int = 12000
 
     model_config = SettingsConfigDict(
         env_file=ENV_FILE,
@@ -40,7 +44,16 @@ class Settings(BaseSettings):
             raise ValueError("ai_provider must be tabnine_cli or azure_openai")
         return value
 
-    @field_validator("tabnine_timeout_seconds", "max_upload_size_mb", "max_chunk_chars", "max_chunks_per_document")
+    @field_validator(
+        "tabnine_timeout_seconds",
+        "max_upload_size_mb",
+        "max_chunk_chars",
+        "max_chunks_per_document",
+        "assistant_max_claims",
+        "assistant_max_evidence_per_claim",
+        "assistant_max_evidence_chars",
+        "assistant_max_context_chars",
+    )
     @classmethod
     def positive_integer_settings_must_be_positive(cls, value: int) -> int:
         if value <= 0:

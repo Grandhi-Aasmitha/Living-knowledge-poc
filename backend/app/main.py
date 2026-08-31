@@ -11,6 +11,7 @@ from app.ai.client import AIProviderError
 from app.ai.answer_interpreter import AnswerInterpreter
 from app.ai.provider import build_structured_ai_client
 from app.ai.question_generator import QuestionGenerator
+from app.api.assistant import router as assistant_router
 from app.api.conflicts import router as conflicts_router
 from app.api.curation import router as curation_router
 from app.api.entities import router as entities_router
@@ -18,6 +19,9 @@ from app.api.gaps import router as gaps_router
 from app.api.graph import router as graph_router
 from app.api.health import router as health_router
 from app.api.sources import router as sources_router
+from app.assistant.answer_generator import AnswerGenerator
+from app.assistant.query_planner import QueryPlanner
+from app.assistant.service import KnowledgeAssistantService
 from app.config import REPOSITORY_ROOT, get_settings
 from app.db.neo4j import Neo4jClient
 from app.db.schema import ensure_schema
@@ -25,6 +29,7 @@ from app.repositories.claim_repository import ClaimRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.entity_repository import EntityRepository
 from app.repositories.gap_repository import GapRepository
+from app.repositories.knowledge_query_repository import KnowledgeQueryRepository
 from app.repositories.source_repository import SourceRepository
 from app.services.file_ingestion_service import FileIngestionService
 from app.workflows.curation import CurationWorkflow
@@ -46,6 +51,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.curation_unavailable_reason = "AI provider is unavailable"
     app.state.file_ingestion_service = None
     app.state.file_ingestion_unavailable_reason = "AI provider is unavailable"
+    app.state.knowledge_assistant_service = None
+    app.state.knowledge_assistant_unavailable_reason = "AI provider is unavailable"
     app.state.document_repository = DocumentRepository(app.state.neo4j)
     app.state.langgraph_checkpointer_context = None
 
@@ -90,11 +97,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_chunk_chars=settings.max_chunk_chars,
             max_chunks_per_document=settings.max_chunks_per_document,
         )
+        app.state.knowledge_assistant_service = KnowledgeAssistantService(
+            query_planner=QueryPlanner(ai_client),
+            repository=KnowledgeQueryRepository(app.state.neo4j),
+            answer_generator=AnswerGenerator(ai_client),
+            max_claims=settings.assistant_max_claims,
+            max_evidence_per_claim=settings.assistant_max_evidence_per_claim,
+            max_evidence_chars=settings.assistant_max_evidence_chars,
+            max_context_chars=settings.assistant_max_context_chars,
+        )
         app.state.curation_unavailable_reason = None
         app.state.file_ingestion_unavailable_reason = None
+        app.state.knowledge_assistant_unavailable_reason = None
     except AIProviderError as error:
         app.state.curation_unavailable_reason = str(error)
         app.state.file_ingestion_unavailable_reason = str(error)
+        app.state.knowledge_assistant_unavailable_reason = str(error)
         logger.warning("AI-backed workflows unavailable: %s", error)
 
     try:
@@ -125,6 +143,7 @@ def create_app() -> FastAPI:
     app.include_router(sources_router)
     app.include_router(graph_router)
     app.include_router(conflicts_router)
+    app.include_router(assistant_router)
     return app
 
 

@@ -1,9 +1,60 @@
 # Living Knowledge POC Guidelines
 
-- This repository is currently implemented through Phase 3 when explicitly requested; do not proceed to later phases without explicit user approval.
-- Phase 3 scope is a single human-in-the-loop curation workflow for `MISSING_CONSUMER` knowledge gaps using PydanticAI for question/answer LLM interactions and LangGraph for interrupt/resume/checkpoint orchestration.
-- Do not add Phase 4+ functionality: no document ingestion, graph visualization, Cytoscape, semantic search, embeddings, automatic gap detection, conflict detection, knowledge assistant, authentication, queues, Redis, Celery, Kubernetes, LangChain, Pydantic Graph, or generic workflow frameworks.
-- Neo4j stores durable knowledge only: Entity, Claim, Evidence, KnowledgeSource, and KnowledgeGap. Do not store LangGraph checkpoint/runtime state in Neo4j.
+Current project phase: Phase 9 — Knowledge Assistant + Evaluation.
+
+Implemented phases:
+- Phase 1 — Project bootstrap and Neo4j connectivity
+- Phase 2 — Canonical knowledge core
+- Phase 3 — Human-in-the-loop curation
+- Phase 3.1 — Pluggable AI provider with Tabnine CLI
+- Phase 4 — Document ingestion and structured knowledge extraction
+- Phase 5 — Graph Explorer
+- Phase 6 — Automatic knowledge gap detection
+- Phase 8 — Conflict detection and human resolution
+
+Deferred:
+- Phase 7 — Confluence MCP integration is deferred because Atlassian MCP authentication is not currently available.
+
+Phase 9 implementation is explicitly allowed.
+
+Phase 9 scope:
+- read-only Knowledge Assistant
+- typed bounded query planning
+- deterministic Neo4j retrieval
+- evidence-backed answer generation
+- citation validation
+- open-gap awareness
+- open-conflict awareness
+- React Knowledge Assistant UI
+- deterministic golden evaluation
+
+Phase 9 must NOT include:
+- arbitrary Cypher
+- AI-generated Cypher
+- assistant database writes
+- LangGraph assistant workflows
+- conversation memory
+- chat history persistence
+- embeddings
+- vector search
+- semantic search
+- LLM-as-judge evaluation
+- Confluence implementation
+- MCP integration
+- Phase 7 work
+- functionality beyond Phase 9
+
+Architectural rules:
+- Neo4j = canonical knowledge
+- StructuredAIClient = AI provider boundary
+- Tabnine CLI = current POC AI provider
+- PydanticAI/Azure OpenAI = future provider
+- LangGraph = HITL curation only
+- Knowledge Assistant = read-only
+- LLM never gets direct Neo4j access
+- LLM never generates or executes Cypher
+
+- Neo4j stores durable knowledge only: Entity, Claim, Evidence, KnowledgeSource, KnowledgeGap, SourceDocument, SourceVersion, SourceChunk, and KnowledgeConflict. Do not store LangGraph checkpoint/runtime state in Neo4j.
 - Use Podman/Podman Compose with project-specific names for this repo.
 - Never run destructive global Podman commands such as pruning all containers/volumes or removing unrelated containers/volumes.
 - Stop or restart only the project-specific Neo4j service/container when needed: `neo4j` / `living-knowledge-neo4j`.
