@@ -92,7 +92,8 @@ h3 {
 
 .status-row,
 .gap-item,
-.document-item {
+.document-item,
+.scan-result {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -101,6 +102,16 @@ h3 {
   border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 0.875rem;
   background: rgba(30, 41, 59, 0.72);
+}
+
+.scan-result {
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  color: #cbd5e1;
+}
+
+.scan-result strong {
+  color: #f8fafc;
 }
 
 dt {

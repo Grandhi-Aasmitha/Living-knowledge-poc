@@ -171,15 +171,14 @@ class CurationWorkflow:
         interpretation = AnswerInterpretation(**state["interpretation"])
         if not interpretation.can_resolve:
             return "needs_review"
+        if not self._interpretation_matches_gap_type(state["gap_type"], interpretation):
+            return "needs_review"
         return "persist"
 
     async def _mark_needs_review(self, state: CurationState) -> CurationState:
         return {**state, "status": "NEEDS_REVIEW"}
 
     async def _build_claim_candidate(self, state: CurationState) -> CurationState:
-        if state["gap_type"] != "MISSING_CONSUMER":
-            raise ValueError(f"UNSUPPORTED_GAP_TYPE:{state['gap_type']}")
-
         interpretation = AnswerInterpretation(**state["interpretation"])
         if interpretation.entity_name is None or interpretation.entity_type is None:
             raise ValueError("UNRESOLVED_INTERPRETATION")
@@ -189,13 +188,39 @@ class CurationWorkflow:
             entity_type=interpretation.entity_type,
             canonical_name=interpretation.entity_name,
         )
-        candidate = ClaimCandidate(
-            subject_entity_id=candidate_entity_id,
-            predicate="CONSUMES",
-            object_entity_id=state["gap_entity_id"],
-            confidence=1.0,
-        )
+        if state["gap_type"] == "MISSING_CONSUMER":
+            candidate = ClaimCandidate(
+                subject_entity_id=candidate_entity_id,
+                predicate="CONSUMES",
+                object_entity_id=state["gap_entity_id"],
+                confidence=1.0,
+            )
+        elif state["gap_type"] == "MISSING_PRODUCER":
+            candidate = ClaimCandidate(
+                subject_entity_id=candidate_entity_id,
+                predicate="PRODUCES",
+                object_entity_id=state["gap_entity_id"],
+                confidence=1.0,
+            )
+        elif state["gap_type"] == "MISSING_OWNER":
+            candidate = ClaimCandidate(
+                subject_entity_id=candidate_entity_id,
+                predicate="OWNS",
+                object_entity_id=state["gap_entity_id"],
+                confidence=1.0,
+            )
+        else:
+            raise ValueError(f"UNSUPPORTED_GAP_TYPE:{state['gap_type']}")
         return {**state, "claim_candidate": candidate.model_dump(mode="json")}
+
+    def _interpretation_matches_gap_type(self, gap_type: str, interpretation: AnswerInterpretation) -> bool:
+        if interpretation.entity_type is None:
+            return False
+        if gap_type in {"MISSING_CONSUMER", "MISSING_PRODUCER"}:
+            return interpretation.entity_type in {"SERVICE", "SYSTEM"}
+        if gap_type == "MISSING_OWNER":
+            return interpretation.entity_type == "TEAM"
+        return True
 
     async def _persist_knowledge(self, state: CurationState) -> CurationState:
         interpretation = AnswerInterpretation(**state["interpretation"])

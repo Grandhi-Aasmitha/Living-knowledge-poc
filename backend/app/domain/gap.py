@@ -19,3 +19,5 @@ class KnowledgeGap(BaseModel):
     status: GapStatus = GapStatus.OPEN
     created_at: datetime = Field(default_factory=utc_now)
     resolved_at: datetime | None = None
+    detection_rule_id: str | None = None
+    last_detected_at: datetime | None = None

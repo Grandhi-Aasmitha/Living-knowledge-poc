@@ -69,6 +69,40 @@ class GapRepository:
 
         return [_gap_from_node(record["gap"]) for record in records]
 
+    async def find_open_for_entity_and_type(self, entity_id: str, gap_type: str) -> KnowledgeGap | None:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (gap:KnowledgeGap {entity_id: $entity_id, gap_type: $gap_type, status: $status})
+                RETURN gap
+                ORDER BY gap.created_at, gap.id
+                LIMIT 1
+                """,
+                entity_id=entity_id,
+                gap_type=gap_type,
+                status=GapStatus.OPEN.value,
+            )
+            record = await result.single()
+
+        if record is None:
+            return None
+        return _gap_from_node(record["gap"])
+
+    async def list_automatic_for_namespace(self, namespace: str) -> list[KnowledgeGap]:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (gap:KnowledgeGap)-[:ABOUT]->(entity:Entity {namespace: $namespace})
+                WHERE gap.detection_rule_id IS NOT NULL
+                RETURN gap
+                ORDER BY gap.created_at, gap.id
+                """,
+                namespace=namespace,
+            )
+            records = await result.data()
+
+        return [_gap_from_node(record["gap"]) for record in records]
+
     async def resolve(self, gap_id: str) -> KnowledgeGap | None:
         resolved_at = datetime.now(UTC).isoformat()
         async with self._client.session() as session:
@@ -82,6 +116,43 @@ class GapRepository:
                 id=gap_id,
                 status=GapStatus.RESOLVED.value,
                 resolved_at=resolved_at,
+            )
+            record = await result.single()
+
+        if record is None:
+            return None
+        return _gap_from_node(record["gap"])
+
+    async def reopen(self, gap_id: str, detected_at: datetime) -> KnowledgeGap | None:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (gap:KnowledgeGap {id: $id})
+                SET gap.status = $status,
+                    gap.resolved_at = NULL,
+                    gap.last_detected_at = $detected_at
+                RETURN gap
+                """,
+                id=gap_id,
+                status=GapStatus.OPEN.value,
+                detected_at=detected_at.isoformat(),
+            )
+            record = await result.single()
+
+        if record is None:
+            return None
+        return _gap_from_node(record["gap"])
+
+    async def touch_detection(self, gap_id: str, detected_at: datetime) -> KnowledgeGap | None:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (gap:KnowledgeGap {id: $id})
+                SET gap.last_detected_at = $detected_at
+                RETURN gap
+                """,
+                id=gap_id,
+                detected_at=detected_at.isoformat(),
             )
             record = await result.single()
 

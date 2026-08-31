@@ -34,6 +34,16 @@ type SubmitAnswerResponse = {
   claim_id?: string;
 };
 
+type GapDetectionResult = {
+  namespace: string;
+  findings_detected: number;
+  gaps_created: number;
+  gaps_existing: number;
+  gaps_reopened: number;
+  gaps_resolved: number;
+  open_automatic_gaps: number;
+};
+
 type IngestionResponse = {
   document_id: string;
   version_id: string | null;
@@ -75,6 +85,8 @@ export default function App() {
   const [ingestionMessage, setIngestionMessage] = useState('');
   const [documents, setDocuments] = useState<SourceDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [detectionResult, setDetectionResult] = useState<GapDetectionResult | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   async function loadGaps() {
     try {
@@ -87,6 +99,26 @@ export default function App() {
       setGaps(openGaps);
     } catch {
       setMessage('Open gaps are unavailable.');
+    }
+  }
+
+  async function detectMissingKnowledge() {
+    setIsDetecting(true);
+    setMessage('');
+    setDetectionResult(null);
+
+    try {
+      const response = await fetch(`${GAPS_URL}/detect?namespace=tstvs`, { method: 'POST' });
+      if (!response.ok) {
+        setMessage('Knowledge scan failed.');
+        return;
+      }
+      setDetectionResult((await response.json()) as GapDetectionResult);
+      await loadGaps();
+    } catch {
+      setMessage('Knowledge scan failed.');
+    } finally {
+      setIsDetecting(false);
     }
   }
 
@@ -293,8 +325,20 @@ export default function App() {
       </section>
 
       <section className="status-card curator-card" aria-labelledby="curator-title">
-        <p className="eyebrow">Phase 3 Workflow</p>
+        <p className="eyebrow">Phase 6 Workflow</p>
         <h2 id="curator-title">Knowledge Curator</h2>
+        <button disabled={isDetecting} type="button" onClick={() => void detectMissingKnowledge()}>
+          {isDetecting ? 'Scanning...' : 'Detect Missing Knowledge'}
+        </button>
+
+        {detectionResult !== null && (
+          <div className="scan-result" role="status">
+            <strong>Knowledge scan complete</strong>
+            <span>Findings: {detectionResult.findings_detected}</span>
+            <span>New gaps: {detectionResult.gaps_created}</span>
+            <span>Resolved automatically: {detectionResult.gaps_resolved}</span>
+          </div>
+        )}
 
         {message !== '' && <p className="message">{message}</p>}
 

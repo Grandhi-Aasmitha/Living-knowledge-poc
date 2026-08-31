@@ -11,6 +11,11 @@ def sha256_text(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def build_automatic_gap_id(rule_id: str, entity_id: str) -> str:
+    digest = sha256_text(f"{rule_id}|{entity_id}")[:24]
+    return f"auto:gap:{rule_id}:{digest}"
+
+
 def normalize_filename(filename: str) -> str:
     return re.sub(r"\s+", " ", filename.strip()).casefold()
 
