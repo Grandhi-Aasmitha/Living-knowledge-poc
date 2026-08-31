@@ -11,6 +11,7 @@ async def ensure_schema(client: Neo4jClient) -> None:
         "CREATE CONSTRAINT source_document_id_unique IF NOT EXISTS FOR (n:SourceDocument) REQUIRE n.id IS UNIQUE",
         "CREATE CONSTRAINT source_version_id_unique IF NOT EXISTS FOR (n:SourceVersion) REQUIRE n.id IS UNIQUE",
         "CREATE CONSTRAINT source_chunk_id_unique IF NOT EXISTS FOR (n:SourceChunk) REQUIRE n.id IS UNIQUE",
+        "CREATE CONSTRAINT knowledge_conflict_id_unique IF NOT EXISTS FOR (n:KnowledgeConflict) REQUIRE n.id IS UNIQUE",
     ]
 
     async with client.session() as session:

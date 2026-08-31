@@ -1,5 +1,6 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 
+import { ConflictReview } from './components/ConflictReview';
 import { GraphExplorer } from './components/GraphExplorer';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
@@ -376,6 +377,8 @@ export default function App() {
           </form>
         )}
       </section>
+
+      <ConflictReview />
     </main>
   );
 }

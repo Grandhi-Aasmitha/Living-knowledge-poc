@@ -11,6 +11,7 @@ from app.ai.client import AIProviderError
 from app.ai.answer_interpreter import AnswerInterpreter
 from app.ai.provider import build_structured_ai_client
 from app.ai.question_generator import QuestionGenerator
+from app.api.conflicts import router as conflicts_router
 from app.api.curation import router as curation_router
 from app.api.entities import router as entities_router
 from app.api.gaps import router as gaps_router
@@ -123,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(curation_router)
     app.include_router(sources_router)
     app.include_router(graph_router)
+    app.include_router(conflicts_router)
     return app
 
 

@@ -16,6 +16,12 @@ def build_automatic_gap_id(rule_id: str, entity_id: str) -> str:
     return f"auto:gap:{rule_id}:{digest}"
 
 
+def build_conflict_id(rule_id: str, claim_ids: list[str]) -> str:
+    sorted_claim_ids = sorted(claim_ids)
+    digest = sha256_text(f"{rule_id}|{'|'.join(sorted_claim_ids)}")[:24]
+    return f"conflict:{rule_id}:{digest}"
+
+
 def normalize_filename(filename: str) -> str:
     return re.sub(r"\s+", " ", filename.strip()).casefold()
 
