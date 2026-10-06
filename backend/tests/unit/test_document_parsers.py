@@ -6,8 +6,10 @@ from pptx import Presentation
 from pypdf import PdfWriter
 
 from app.documents.parsers import (
+    DOCUMENT_PARSE_ERROR_MESSAGE,
     NO_EXTRACTABLE_TEXT_MESSAGE,
     DocxParser,
+    DocumentParseError,
     NoExtractableTextError,
     PptxParser,
     TextDocumentParser,
@@ -95,6 +97,22 @@ def test_blank_pdf_raises_no_extractable_text(tmp_path: Path) -> None:
 
     with pytest.raises(NoExtractableTextError, match=NO_EXTRACTABLE_TEXT_MESSAGE):
         get_parser("blank.pdf").parse(path, "blank.pdf")
+
+
+def test_corrupt_pdf_raises_safe_parse_error(tmp_path: Path) -> None:
+    path = tmp_path / "corrupt.pdf"
+    path.write_bytes(b"this is not a pdf")
+
+    with pytest.raises(DocumentParseError, match=DOCUMENT_PARSE_ERROR_MESSAGE):
+        get_parser("corrupt.pdf").parse(path, "corrupt.pdf")
+
+
+def test_invalid_utf8_text_raises_safe_parse_error(tmp_path: Path) -> None:
+    path = tmp_path / "invalid.txt"
+    path.write_bytes(b"\xff\xfe\xfa")
+
+    with pytest.raises(DocumentParseError, match=DOCUMENT_PARSE_ERROR_MESSAGE):
+        TextDocumentParser().parse(path, "invalid.txt")
 
 
 def test_unsupported_extension_rejected() -> None:

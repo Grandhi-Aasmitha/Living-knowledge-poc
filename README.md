@@ -6,7 +6,15 @@ Implemented phases:
 
 - Phase 1: FastAPI, React/Vite, Neo4j Community via Podman Compose, and health checks.
 - Phase 2: canonical knowledge model, controlled ontology, Neo4j repositories, read-only entity/gap APIs, and TSTVS seed data.
-- Phase 3: one human-in-the-loop curation workflow for `MISSING_CONSUMER` gaps using PydanticAI and LangGraph interrupt/resume checkpointing.
+- Phase 3: human-in-the-loop curation workflow using LangGraph interrupt/resume checkpointing.
+- Phase 3.1: provider-neutral `StructuredAIClient` with Tabnine CLI by default and optional Azure OpenAI/PydanticAI when explicitly configured.
+- Phase 4: document ingestion and structured knowledge extraction for PDF, DOCX, PPTX, TXT, and Markdown uploads.
+- Phase 5: graph explorer with provenance views.
+- Phase 6: automatic knowledge gap detection.
+- Phase 8: conflict detection and human resolution.
+- Phase 9: read-only Knowledge Assistant with typed bounded planning, deterministic retrieval, evidence-backed answers, citation validation, and deterministic golden evaluation.
+
+This POC is for local development/demo use only. Write-capable endpoints are intentionally unauthenticated for local iteration and must not be exposed on a public network without adding authentication and CSRF protection.
 
 ## Prerequisites
 

@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.domain.enums import EntityStatus
 from app.domain.ontology import validate_entity_type
+from app.domain.validation import NonBlankString
 
 
 def utc_now() -> datetime:
@@ -11,13 +12,13 @@ def utc_now() -> datetime:
 
 
 class Entity(BaseModel):
-    id: str
-    entity_type: str
-    canonical_name: str
-    description: str | None = None
-    namespace: str
+    id: NonBlankString
+    entity_type: NonBlankString
+    canonical_name: NonBlankString
+    description: NonBlankString | None = None
+    namespace: NonBlankString
     status: EntityStatus = EntityStatus.ACTIVE
-    aliases: list[str] = Field(default_factory=list)
+    aliases: list[NonBlankString] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

@@ -1,5 +1,7 @@
 import { FormEvent, useState } from 'react';
 
+import { ASSISTANT_MAX_QUESTION_LENGTH } from '../config';
+
 type KnowledgeStatus = 'CONFIRMED' | 'PROPOSED' | 'INCOMPLETE' | 'CONFLICTING';
 
 type MatchedEntity = {
@@ -111,6 +113,7 @@ export function KnowledgeAssistant({ apiRoot }: KnowledgeAssistantProps) {
         <textarea
           id="assistant-question"
           value={question}
+          maxLength={ASSISTANT_MAX_QUESTION_LENGTH}
           onChange={(event) => setQuestion(event.target.value)}
           placeholder="Who owns Scheduler Service?"
           rows={3}

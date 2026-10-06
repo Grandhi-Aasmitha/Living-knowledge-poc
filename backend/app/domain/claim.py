@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain.enums import ClaimStatus
 from app.domain.ontology import validate_predicate
+from app.domain.validation import NonBlankString
 
 
 def utc_now() -> datetime:
@@ -12,12 +13,12 @@ def utc_now() -> datetime:
 
 
 class Claim(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
-    subject_entity_id: str
-    predicate: str
-    object_entity_id: str | None = None
-    object_value: str | None = None
-    scope_entity_id: str | None = None
+    id: NonBlankString = Field(default_factory=lambda: str(uuid4()))
+    subject_entity_id: NonBlankString
+    predicate: NonBlankString
+    object_entity_id: NonBlankString | None = None
+    object_value: NonBlankString | None = None
+    scope_entity_id: NonBlankString | None = None
     confidence: float = 1.0
     status: ClaimStatus
     valid_from: datetime | None = None

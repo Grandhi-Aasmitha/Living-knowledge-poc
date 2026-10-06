@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
@@ -5,11 +6,12 @@ from pydantic import BaseModel
 
 from app.ai.client import AIProviderError
 from app.documents.chunker import ChunkLimitExceededError
-from app.documents.parsers import NoExtractableTextError, UnsupportedDocumentTypeError
+from app.documents.parsers import DocumentParseError, NoExtractableTextError, UnsupportedDocumentTypeError
 from app.documents.storage import UploadTooLargeError
 
 
 router = APIRouter(prefix="/api/sources/files", tags=["sources"])
+logger = logging.getLogger(__name__)
 
 
 class IngestionResponse(BaseModel):
@@ -54,16 +56,33 @@ async def upload_file(
         content = await file.read()
         result = await service.ingest(content=content, original_filename=file.filename or "", namespace=namespace)
     except UnsupportedDocumentTypeError as error:
+        logger.info("Upload rejected unsupported_type namespace=%s", namespace)
         raise HTTPException(status_code=400, detail=str(error)) from error
     except UploadTooLargeError as error:
+        logger.info("Upload rejected too_large namespace=%s", namespace)
         raise HTTPException(status_code=413, detail=str(error)) from error
-    except (NoExtractableTextError, ChunkLimitExceededError) as error:
+    except (DocumentParseError, NoExtractableTextError, ChunkLimitExceededError) as error:
+        logger.info("Upload rejected unprocessable namespace=%s reason=%s", namespace, str(error))
         raise HTTPException(status_code=422, detail=str(error)) from error
     except AIProviderError as error:
+        logger.warning("Upload failed during AI extraction namespace=%s provider_error=%s", namespace, str(error))
         raise HTTPException(status_code=502, detail="AI provider failed to generate structured output") from error
     except ValueError as error:
+        logger.info("Upload rejected validation namespace=%s reason=%s", namespace, str(error))
         raise HTTPException(status_code=422, detail="File ingestion failed validation") from error
 
+    logger.info(
+        "Upload completed document_id=%s version_id=%s status=%s namespace=%s chunks=%d claims_created=%d claims_reused=%d evidence_created=%d claims_rejected=%d",
+        result.document_id,
+        result.version_id,
+        result.status,
+        namespace,
+        result.chunks_processed,
+        result.claims_created,
+        result.claims_reused,
+        result.evidence_created,
+        result.claims_rejected,
+    )
     return IngestionResponse(**result.__dict__)
 
 

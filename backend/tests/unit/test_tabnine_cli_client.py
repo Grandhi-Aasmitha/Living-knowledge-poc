@@ -96,7 +96,7 @@ def test_malformed_model_json_raises(monkeypatch) -> None:
         run(call_with_process(monkeypatch, process, QuestionDraft))
 
 
-def test_schema_invalid_result_raises(monkeypatch) -> None:
+def test_schema_invalid_result_raises_with_safe_validation_summary(monkeypatch) -> None:
     process = FakeProcess(
         tabnine_stdout(
             {
@@ -107,8 +107,14 @@ def test_schema_invalid_result_raises(monkeypatch) -> None:
         )
     )
 
-    with pytest.raises(AIProviderError):
+    with pytest.raises(AIProviderError) as exc_info:
         run(call_with_process(monkeypatch, process, AnswerInterpretation))
+
+    message = str(exc_info.value)
+    assert "Tabnine CLI provider returned schema-invalid JSON" in message
+    assert "entity_type:" in message
+    assert "NOT_ALLOWED" not in message
+    assert "Scheduler Service" not in message
 
 
 def test_non_zero_exit_raises(monkeypatch) -> None:

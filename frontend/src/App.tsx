@@ -3,6 +3,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { ConflictReview } from './components/ConflictReview';
 import { GraphExplorer } from './components/GraphExplorer';
 import { KnowledgeAssistant } from './components/KnowledgeAssistant';
+import { API_ROOT } from './config';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
 type BackendStatus = 'Checking...' | 'UP' | 'DOWN';
@@ -69,7 +70,6 @@ type SourceDocument = {
   updated_at: string;
 };
 
-const API_ROOT = 'http://localhost:8000';
 const HEALTH_URL = `${API_ROOT}/api/health`;
 const GAPS_URL = `${API_ROOT}/api/gaps`;
 const SOURCES_URL = `${API_ROOT}/api/sources/files`;

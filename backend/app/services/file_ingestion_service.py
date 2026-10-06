@@ -1,8 +1,9 @@
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from app.ai.client import StructuredAIClient
+from app.ai.client import AIProviderError, StructuredAIClient
 from app.ai.extraction_models import ExtractedClaim, ExtractedEntity, ExtractedKnowledge
 from app.ai.knowledge_extractor import KnowledgeExtractor
 from app.documents.chunker import DocumentChunker
@@ -29,6 +30,7 @@ from app.repositories.source_repository import SourceRepository
 
 
 FILE_UPLOAD_SOURCE_ID = "source:file-upload"
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -76,14 +78,29 @@ class FileIngestionService:
     async def ingest(self, content: bytes, original_filename: str, namespace: str = "tstvs") -> IngestionResult:
         filename = safe_original_filename(original_filename)
         if not is_supported_filename(filename):
+            logger.info("Rejected unsupported upload extension=%s namespace=%s", _file_extension(filename), namespace)
             raise UnsupportedDocumentTypeError("Unsupported file type. Supported types: .pdf, .docx, .pptx, .txt, .md")
         self._storage.validate_size(content)
         content_hash = self._storage.content_hash(content)
         external_id = normalize_filename(filename)
         document_id = stable_source_document_id(filename)
+        logger.info(
+            "Starting file ingestion document_id=%s extension=%s namespace=%s bytes=%d content_hash_prefix=%s",
+            document_id,
+            _file_extension(filename),
+            namespace,
+            len(content),
+            content_hash[:12],
+        )
         existing = await self._document_repository.get_document_by_external_id(FILE_UPLOAD_SOURCE_ID, external_id)
         if existing is not None and existing.current_content_hash == content_hash:
             current_version = await self._document_repository.get_current_version(existing.id)
+            logger.info(
+                "File ingestion unchanged document_id=%s version_id=%s namespace=%s",
+                existing.id,
+                current_version.id if current_version is not None else None,
+                namespace,
+            )
             return IngestionResult(
                 document_id=existing.id,
                 version_id=current_version.id if current_version is not None else None,
@@ -102,14 +119,48 @@ class FileIngestionService:
         parsed = get_parser(filename).parse(path, filename)
         draft_chunks = self._chunker.chunk(parsed)
         if not draft_chunks:
+            logger.warning("File ingestion found no chunks document_id=%s extension=%s namespace=%s", document_id, _file_extension(filename), namespace)
             raise NoExtractableTextError("No extractable text found in the uploaded document.")
 
         next_version = 1 if existing is None else existing.latest_version + 1
         version_id = stable_source_version_id(document_id, content_hash)
         chunks = self._chunker.materialize(version_id, draft_chunks)
+        logger.info(
+            "File ingestion parsed document_id=%s version_id=%s extension=%s namespace=%s sections=%d chunks=%d next_version=%d",
+            document_id,
+            version_id,
+            _file_extension(filename),
+            namespace,
+            len(parsed.sections),
+            len(chunks),
+            next_version,
+        )
         extracted_by_chunk: list[tuple[SourceChunk, ExtractedKnowledge]] = []
         for chunk in chunks:
-            extracted_by_chunk.append((chunk, await self._extractor.extract(chunk, namespace)))
+            try:
+                extracted = await self._extractor.extract(chunk, namespace)
+            except AIProviderError as error:
+                logger.warning(
+                    "File ingestion AI extraction failed document_id=%s version_id=%s namespace=%s chunk_sequence=%d chunk_count=%d provider_error=%s",
+                    document_id,
+                    version_id,
+                    namespace,
+                    chunk.sequence,
+                    len(chunks),
+                    str(error),
+                )
+                raise
+            logger.info(
+                "File ingestion extracted chunk document_id=%s version_id=%s namespace=%s chunk_sequence=%d entities=%d claims=%d unresolved_terms=%d",
+                document_id,
+                version_id,
+                namespace,
+                chunk.sequence,
+                len(extracted.entities),
+                len(extracted.claims),
+                len(extracted.unresolved_terms),
+            )
+            extracted_by_chunk.append((chunk, extracted))
 
         now = datetime.now(UTC)
         source = await self._source_repository.create(
@@ -172,6 +223,14 @@ class FileIngestionService:
             for extracted_claim in knowledge.claims:
                 if not _evidence_is_supported(extracted_claim.evidence_text, chunk.content):
                     claims_rejected += 1
+                    logger.warning(
+                        "File ingestion rejected unsupported evidence document_id=%s version_id=%s namespace=%s chunk_sequence=%d rejected_count=%d",
+                        document.id,
+                        version.id,
+                        namespace,
+                        chunk.sequence,
+                        claims_rejected,
+                    )
                     continue
                 resolved = self._build_claim(extracted_claim, entity_by_temp_id, chunk, source.id, now)
                 existing_claim = await self._claim_repository.find_equivalent_active(
@@ -192,7 +251,7 @@ class FileIngestionService:
                 evidence_created += 1
 
         await self._document_repository.mark_document_current(document.id, next_version, content_hash, now)
-        return IngestionResult(
+        result = IngestionResult(
             document_id=document.id,
             version_id=version.id,
             status="INGESTED",
@@ -205,6 +264,21 @@ class FileIngestionService:
             claims_rejected=claims_rejected,
             unresolved_terms=sorted(set(unresolved_terms)),
         )
+        logger.info(
+            "File ingestion completed document_id=%s version_id=%s namespace=%s chunks=%d entities_created=%d entities_reused=%d claims_created=%d claims_reused=%d evidence_created=%d claims_rejected=%d unresolved_terms=%d",
+            result.document_id,
+            result.version_id,
+            namespace,
+            result.chunks_processed,
+            result.entities_created,
+            result.entities_reused,
+            result.claims_created,
+            result.claims_reused,
+            result.evidence_created,
+            result.claims_rejected,
+            len(result.unresolved_terms),
+        )
+        return result
 
     async def _resolve_entity(
         self,
@@ -269,6 +343,11 @@ class FileIngestionService:
             created_at=now,
         )
         return _ResolvedClaim(claim=claim, evidence=evidence)
+
+
+def _file_extension(filename: str) -> str:
+    dot_index = filename.rfind(".")
+    return filename[dot_index:].lower() if dot_index >= 0 else ""
 
 
 def _normalize_evidence(value: str) -> str:

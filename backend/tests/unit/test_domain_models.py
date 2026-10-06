@@ -5,7 +5,10 @@ from pydantic import ValidationError
 
 from app.domain.claim import Claim
 from app.domain.entity import Entity
-from app.domain.enums import ClaimStatus
+from app.domain.enums import ClaimStatus, GapPriority, SourceType
+from app.domain.evidence import Evidence
+from app.domain.gap import KnowledgeGap
+from app.domain.source import KnowledgeSource
 
 
 def test_valid_entity_type_accepted() -> None:
@@ -29,6 +32,26 @@ def test_invalid_entity_type_rejected() -> None:
         )
 
 
+def test_entity_rejects_blank_required_strings() -> None:
+    with pytest.raises(ValidationError):
+        Entity(id=" ", entity_type="SERVICE", canonical_name="Test Service", namespace="test")
+
+    with pytest.raises(ValidationError):
+        Entity(id="test:entity:service", entity_type="SERVICE", canonical_name=" ", namespace="test")
+
+    with pytest.raises(ValidationError):
+        Entity(id="test:entity:service", entity_type="SERVICE", canonical_name="Test Service", namespace=" ")
+
+
+def test_entity_trims_valid_strings() -> None:
+    entity = Entity(id=" test:entity:service ", entity_type=" SERVICE ", canonical_name=" Test Service ", namespace=" test ")
+
+    assert entity.id == "test:entity:service"
+    assert entity.entity_type == "SERVICE"
+    assert entity.canonical_name == "Test Service"
+    assert entity.namespace == "test"
+
+
 def test_valid_claim_predicate_accepted() -> None:
     claim = Claim(
         subject_entity_id="test:entity:subject",
@@ -48,6 +71,17 @@ def test_invalid_predicate_rejected() -> None:
             object_entity_id="test:entity:object",
             status=ClaimStatus.CONFIRMED,
         )
+
+
+def test_claim_rejects_blank_required_and_optional_strings() -> None:
+    with pytest.raises(ValidationError):
+        Claim(subject_entity_id=" ", predicate="OWNS", object_entity_id="test:entity:object", status=ClaimStatus.CONFIRMED)
+
+    with pytest.raises(ValidationError):
+        Claim(subject_entity_id="test:entity:subject", predicate="OWNS", object_entity_id=" ", status=ClaimStatus.CONFIRMED)
+
+    with pytest.raises(ValidationError):
+        Claim(subject_entity_id="test:entity:subject", predicate="PURPOSE", object_value=" ", status=ClaimStatus.CONFIRMED)
 
 
 def test_claim_with_entity_object_accepted() -> None:
@@ -145,3 +179,24 @@ def test_invalid_temporal_range_rejected() -> None:
             valid_from=valid_from,
             valid_to=valid_to,
         )
+
+
+def test_evidence_rejects_blank_identifiers() -> None:
+    with pytest.raises(ValidationError):
+        Evidence(id=" ", claim_id="test:claim", source_id="test:source")
+
+    with pytest.raises(ValidationError):
+        Evidence(claim_id="test:claim", source_id=" ")
+
+
+def test_gap_rejects_blank_core_fields() -> None:
+    with pytest.raises(ValidationError):
+        KnowledgeGap(entity_id=" ", gap_type="MISSING_OWNER", description="Owner missing", priority=GapPriority.HIGH)
+
+    with pytest.raises(ValidationError):
+        KnowledgeGap(entity_id="test:entity", gap_type="MISSING_OWNER", description=" ", priority=GapPriority.HIGH)
+
+
+def test_source_rejects_blank_title() -> None:
+    with pytest.raises(ValidationError):
+        KnowledgeSource(source_type=SourceType.SYSTEM, title=" ")

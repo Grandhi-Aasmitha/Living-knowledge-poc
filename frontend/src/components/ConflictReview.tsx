@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from 'react';
 
-const API_ROOT = 'http://localhost:8000';
+import { API_ROOT } from '../config';
 
 export type ConflictStatus = 'OPEN' | 'RESOLVED' | 'DISMISSED';
 type ConflictResolutionType = 'KEEP_CLAIM' | 'BOTH_VALID' | 'CORRECTED';

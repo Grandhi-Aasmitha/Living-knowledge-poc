@@ -47,8 +47,8 @@ Phase 9 must NOT include:
 Architectural rules:
 - Neo4j = canonical knowledge
 - StructuredAIClient = AI provider boundary
-- Tabnine CLI = current POC AI provider
-- PydanticAI/Azure OpenAI = future provider
+- Tabnine CLI = default current POC AI provider
+- PydanticAI/Azure OpenAI = optional StructuredAIClient adapter for local POC runtime when explicitly configured
 - LangGraph = HITL curation only
 - Knowledge Assistant = read-only
 - LLM never gets direct Neo4j access

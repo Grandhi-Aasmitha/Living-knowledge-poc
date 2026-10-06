@@ -52,7 +52,8 @@ class TabnineCliClient:
         try:
             return response_model.model_validate_json(content)
         except ValidationError as error:
-            raise AIProviderError("Tabnine CLI provider returned schema-invalid JSON") from error
+            summary = _validation_error_summary(error)
+            raise AIProviderError(f"Tabnine CLI provider returned schema-invalid JSON ({summary})") from error
         except ValueError as error:
             raise AIProviderError("Tabnine CLI provider returned malformed JSON") from error
 
@@ -110,3 +111,16 @@ class TabnineCliClient:
                 continue
 
         raise AIProviderError("Tabnine CLI provider did not return a JSON response")
+
+
+def _validation_error_summary(error: ValidationError) -> str:
+    summaries = []
+    errors = error.errors(include_url=False, include_context=False, include_input=False)
+    for item in errors[:5]:
+        location = ".".join(str(part) for part in item.get("loc", ())) or "root"
+        error_type = item.get("type", "validation_error")
+        summaries.append(f"{location}:{error_type}")
+    remaining = len(errors) - len(summaries)
+    if remaining > 0:
+        summaries.append(f"+{remaining}_more")
+    return ", ".join(summaries) if summaries else "validation_error"
