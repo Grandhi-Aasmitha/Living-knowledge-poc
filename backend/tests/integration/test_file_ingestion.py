@@ -96,12 +96,11 @@ async def make_client() -> Neo4jClient:
 
 async def cleanup(client: Neo4jClient) -> None:
     async with client.session() as session:
-        await session.run("MATCH (evidence:Evidence) WHERE evidence.id STARTS WITH 'file:evidence:' OR evidence.id STARTS WITH 'test:evidence:' DETACH DELETE evidence")
-        await session.run("MATCH (claim:Claim) WHERE claim.id STARTS WITH 'file:claim:' OR claim.id STARTS WITH 'test:claim:' DETACH DELETE claim")
-        await session.run("MATCH (chunk:SourceChunk) WHERE chunk.id STARTS WITH 'file:chunk:' DETACH DELETE chunk")
-        await session.run("MATCH (version:SourceVersion) WHERE version.id STARTS WITH 'file:version:' DETACH DELETE version")
-        await session.run("MATCH (document:SourceDocument) WHERE document.id STARTS WITH 'file:document:' DETACH DELETE document")
-        await session.run("MATCH (source:KnowledgeSource {id: $source_id}) DETACH DELETE source", source_id=FILE_UPLOAD_SOURCE_ID)
+        await session.run("MATCH (document:SourceDocument {namespace: 'test'}) WHERE document.filename IN ['phase4-demo.md', 'confirmed-reuse.md'] OPTIONAL MATCH (document)-[:HAS_VERSION]->(version:SourceVersion) OPTIONAL MATCH (version)-[:HAS_CHUNK]->(chunk:SourceChunk) OPTIONAL MATCH (chunk)<-[:FROM_CHUNK]-(evidence:Evidence) DETACH DELETE evidence, chunk, version, document")
+        await session.run("MATCH (claim:Claim)-[:SUBJECT]->(entity:Entity) WHERE entity.id IN ['test:service:ingestion-service', 'test:service:aggregator-service', 'test:service:aggregator'] OPTIONAL MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence) DETACH DELETE evidence, claim")
+        await session.run("MATCH (mention:EntityMention {namespace: 'test'}) DETACH DELETE mention")
+        await session.run("MATCH (batch:LearningBatch {namespace: 'test'}) DETACH DELETE batch")
+        await session.run("MATCH (binding:AliasBinding)-[:RESOLVED_TO]->(entity:Entity {namespace: 'test'}) DETACH DELETE binding")
         await session.run("MATCH (source:KnowledgeSource) WHERE source.id STARTS WITH 'test:source:' DETACH DELETE source")
         await session.run("MATCH (entity:Entity) WHERE entity.id STARTS WITH 'test:service:ingestion-service' OR entity.id STARTS WITH 'test:topic:transformed-price-topic' OR entity.id STARTS WITH 'test:service:aggregator-service' DETACH DELETE entity")
         await session.run("MATCH (entity:Entity {id: 'test:service:aggregator'}) DETACH DELETE entity")
@@ -166,9 +165,10 @@ def test_file_ingestion_versioning_duplicate_detection_and_provenance(tmp_path: 
             document = await document_repository.get_document_by_external_id(
                 FILE_UPLOAD_SOURCE_ID,
                 normalize_filename("phase4-demo.md"),
+                namespace="test",
             )
             assert document is not None
-            assert document.id == stable_source_document_id("phase4-demo.md")
+            assert document.id == stable_source_document_id("phase4-demo.md", "test")
             assert document.latest_version == 1
 
             async with client.session() as session:
@@ -176,10 +176,11 @@ def test_file_ingestion_versioning_duplicate_detection_and_provenance(tmp_path: 
                     await session.run(
                         """
                         MATCH (:Claim)-[:SUPPORTED_BY]->(evidence:Evidence)-[:FROM_SOURCE]->(:KnowledgeSource {id: $source_id})
-                        MATCH (evidence)-[:FROM_CHUNK]->(:SourceChunk)
+                        MATCH (evidence)-[:FROM_CHUNK]->(:SourceChunk)<-[:HAS_CHUNK]-(:SourceVersion)<-[:HAS_VERSION]-(:SourceDocument {id: $document_id})
                         RETURN count(evidence) AS count
                         """,
                         source_id=FILE_UPLOAD_SOURCE_ID,
+                        document_id=document.id,
                     )
                 ).single()
                 versions = await (

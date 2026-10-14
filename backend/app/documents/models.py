@@ -24,6 +24,7 @@ class SourceDocument(BaseModel):
     external_id: str
     title: str
     filename: str
+    namespace: str = "tstvs"
     latest_version: int
     current_content_hash: str
     created_at: datetime = Field(default_factory=utc_now)
@@ -36,6 +37,7 @@ class SourceVersion(BaseModel):
     version_number: int
     content_hash: str
     storage_key: str
+    processing_status: str = "PROCESSING"
     created_at: datetime = Field(default_factory=utc_now)
 
 

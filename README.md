@@ -8,11 +8,12 @@ Implemented phases:
 - Phase 2: canonical knowledge model, controlled ontology, Neo4j repositories, read-only entity/gap APIs, and TSTVS seed data.
 - Phase 3: human-in-the-loop curation workflow using LangGraph interrupt/resume checkpointing.
 - Phase 3.1: provider-neutral `StructuredAIClient` with Tabnine CLI by default and optional Azure OpenAI/PydanticAI when explicitly configured.
-- Phase 4: document ingestion and structured knowledge extraction for PDF, DOCX, PPTX, TXT, and Markdown uploads.
+- Phase 4: document ingestion, structured knowledge extraction, and contextual entity resolution for PDF, DOCX, PPTX, TXT, and Markdown uploads.
 - Phase 5: graph explorer with provenance views.
 - Phase 6: automatic knowledge gap detection.
 - Phase 8: conflict detection and human resolution.
 - Phase 9: read-only Knowledge Assistant with typed bounded planning, deterministic retrieval, evidence-backed answers, citation validation, and deterministic golden evaluation.
+- Team learning: durable source observations, identity questions, human decisions, recovered claims, alias provenance, source-version reconciliation, and longitudinal integration checks.
 
 This POC is for local development/demo use only. Write-capable endpoints are intentionally unauthenticated for local iteration and must not be exposed on a public network without adding authentication and CSRF protection.
 
@@ -41,6 +42,8 @@ AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/openai/v1/
 AZURE_OPENAI_API_KEY=<local-secret>
 AZURE_OPENAI_MODEL=<deployment-or-model-name>
 LANGGRAPH_CHECKPOINT_DB=data/langgraph_checkpoints.db
+ENTITY_RESOLUTION_AUTO_MATCH_THRESHOLD=0.9
+ENTITY_RESOLUTION_MAX_CANDIDATES=5
 ```
 
 Leave Azure values empty when you only need health/entity/gap APIs or automated tests. The backend still starts, and curation endpoints return HTTP 503 until AI is configured.
@@ -119,6 +122,28 @@ python -m pytest
 ```
 
 Automated tests use deterministic fake/PydanticAI FunctionModel behavior and do not require Azure credentials.
+
+Run integration tests against a disposable Neo4j instance using the `NEO4J_*` environment settings. They create and clean up fixture data. The ingestion fixture cleanup is scoped to its own documents and entities and preserves the shared upload source.
+
+## Contextual entity resolution
+
+During document ingestion, extracted entity mentions are resolved against active entities in the same namespace before new graph nodes are created. The application generates a bounded set of lexically plausible, type-compatible candidates and asks the configured structured AI provider to choose `MATCH`, `CREATE`, or `NEEDS_REVIEW`.
+
+High-confidence matches reuse the canonical entity and store the observed name as an alias. Low-confidence or ambiguous matches are returned in `unresolved_terms`, and claims that depend on those unresolved entities are deferred instead of being attached to a guessed node. The AI may only select candidate IDs supplied by the application and never receives direct Neo4j access.
+
+After an upload, the UI shows a learning report with new and recognized entities, aliases learned, new facts, and unresolved terms. Filter the report by outcome and expand an AI decision to read its explanation. The upload summary clears on reload, while **Questions for the team** loads saved identity questions from Neo4j. Choose the correct existing entity or establish a separate entity, explain the decision, and the system remembers the name and applies its waiting claims. Recorded decisions are also browsable and can safely be re-applied after a failed materialization.
+
+`LearningBatch` preserves extracted proposals and source context; `EntityMention` preserves decisions and human reasons; `AliasBinding` reserves learned names and records their provenance. Human identity confirmation does not automatically confirm claims extracted from files. Source files are identified within a team namespace. Failed ingestion does not mark the file current; retries reuse saved proposals. Publishing a new version deactivates the prior version's evidence without deleting history. Current graph queries, gap/conflict scans, and assistant retrieval respect evidence activity; assistant retrieval also respects claim validity dates.
+
+Existing duplicate nodes are not silently merged. Alias conflicts require explicit duplicate reconciliation, which remains a separate future workflow. Older file documents without a namespace are treated as belonging to the original `tstvs` namespace. Legacy knowledge with no processing-status or evidence-activity field keeps its previous behavior until a new version is published.
+
+Select **Reprocess even if unchanged** when uploading an older file to apply the new learning policy. This creates a new processing revision, learns against current team knowledge, and preserves earlier evidence. Normal unchanged uploads continue to skip extraction.
+
+The current local POC serializes same-document uploads within one backend process. Multi-process ingestion needs a durable queue and distributed document lock before scaling out.
+
+Research and architectural decisions, checked against current primary sources, are in [team-learning-research.md](docs/team-learning-research.md).
+
+The graph refreshes after a successful upload or gap resolution. Node details show alternate names, and graph search recognizes aliases as well as canonical names.
 
 ## Phase 3 curation workflow
 

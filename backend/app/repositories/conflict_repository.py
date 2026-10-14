@@ -36,7 +36,7 @@ class ConflictRepository:
                 MATCH (claim:Claim {predicate: 'OWNS'})-[:OBJECT]->(target)
                 MATCH (claim)-[:SUBJECT]->(team:Entity {namespace: $namespace, status: 'ACTIVE', entity_type: 'TEAM'})
                 WHERE claim.status IN $claim_statuses
-                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(:Evidence) }
+                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence) WHERE coalesce(evidence.is_current, true) }
                 WITH target, collect(DISTINCT {claim_id: claim.id, team_id: team.id}) AS ownerships
                 WITH target, ownerships, size([team_id IN collect(DISTINCT ownerships[0].team_id) | team_id]) AS unused
                 UNWIND ownerships AS ownership
@@ -68,7 +68,7 @@ class ConflictRepository:
                 MATCH (claim:Claim {predicate: 'PART_OF'})-[:SUBJECT]->(subject)
                 MATCH (claim)-[:OBJECT]->(parent:Entity {namespace: $namespace, status: 'ACTIVE'})
                 WHERE claim.status IN $claim_statuses
-                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(:Evidence) }
+                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence) WHERE coalesce(evidence.is_current, true) }
                 WITH subject, collect(DISTINCT parent.id) AS parents, collect(DISTINCT claim.id) AS claim_ids
                 WHERE size(parents) >= 2 AND size(claim_ids) >= 2
                 RETURN subject.canonical_name AS entity_name, claim_ids

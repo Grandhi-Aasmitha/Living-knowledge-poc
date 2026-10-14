@@ -1,6 +1,17 @@
 # Living Knowledge POC Guidelines
 
-Current project phase: Phase 9 — Knowledge Assistant + Evaluation.
+Current project phase: Team Learning — user-authorized extension beyond Phase 9.
+
+User-authorized learning scope:
+- durable LearningBatch, EntityMention, and AliasBinding records in Neo4j
+- saved identity clarification questions and human decisions
+- replay of deferred source-backed claims
+- one contextual identity policy across ingestion and human curation
+- safe same-document retries and team-scoped document identity
+- source-version evidence activity and historical provenance
+- research-informed design and longitudinal learning evaluation
+
+The assistant remains read-only. External research is maintained as a dated design document and is not admitted as a fact about a private team. Embeddings, arbitrary Cypher, autonomous ontology changes, and Confluence remain outside the implemented scope.
 
 Implemented phases:
 - Phase 1 — Project bootstrap and Neo4j connectivity
@@ -42,7 +53,7 @@ Phase 9 must NOT include:
 - Confluence implementation
 - MCP integration
 - Phase 7 work
-- functionality beyond Phase 9
+- unrequested functionality outside the user-authorized team-learning extension
 
 Architectural rules:
 - Neo4j = canonical knowledge
@@ -54,7 +65,7 @@ Architectural rules:
 - LLM never gets direct Neo4j access
 - LLM never generates or executes Cypher
 
-- Neo4j stores durable knowledge only: Entity, Claim, Evidence, KnowledgeSource, KnowledgeGap, SourceDocument, SourceVersion, SourceChunk, and KnowledgeConflict. Do not store LangGraph checkpoint/runtime state in Neo4j.
+- Neo4j stores durable knowledge only: Entity, Claim, Evidence, KnowledgeSource, KnowledgeGap, SourceDocument, SourceVersion, SourceChunk, KnowledgeConflict, LearningBatch, EntityMention, and AliasBinding. Do not store LangGraph checkpoint/runtime state in Neo4j.
 - Use Podman/Podman Compose with project-specific names for this repo.
 - Never run destructive global Podman commands such as pruning all containers/volumes or removing unrelated containers/volumes.
 - Stop or restart only the project-specific Neo4j service/container when needed: `neo4j` / `living-knowledge-neo4j`.

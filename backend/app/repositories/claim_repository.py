@@ -85,6 +85,20 @@ class ClaimRepository:
             return None
         return _claim_from_node(record["claim"])
 
+    async def confirm(self, claim_id: str) -> Claim:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (claim:Claim {id: $id}) WHERE claim.status IN ['PROPOSED', 'CONFIRMED']
+                SET claim.status = 'CONFIRMED', claim.confidence = 1.0, claim.updated_at = toString(datetime())
+                RETURN claim
+                """, id=claim_id,
+            )
+            record = await result.single()
+        if record is None:
+            raise ValueError("Claim is not eligible for human confirmation")
+        return _claim_from_node(record["claim"])
+
     async def list_for_entity(self, entity_id: str) -> list[Claim]:
         async with self._client.session() as session:
             result = await session.run(

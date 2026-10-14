@@ -19,6 +19,9 @@ from app.api.gaps import router as gaps_router
 from app.api.graph import router as graph_router
 from app.api.health import router as health_router
 from app.api.sources import router as sources_router
+from app.api.learning import router as learning_router
+from app.repositories.learning_repository import LearningRepository
+from app.ai.entity_resolver import EntityResolver
 from app.assistant.answer_generator import AnswerGenerator
 from app.assistant.query_planner import QueryPlanner
 from app.assistant.service import KnowledgeAssistantService
@@ -85,6 +88,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             question_generator=QuestionGenerator(ai_client),
             answer_interpreter=AnswerInterpreter(ai_client),
             checkpointer=checkpointer,
+            entity_resolver=EntityResolver(ai_client, entity_repository, settings.entity_resolution_auto_match_threshold, settings.entity_resolution_max_candidates),
+            learning_repository=LearningRepository(app.state.neo4j),
         )
         app.state.file_ingestion_service = FileIngestionService(
             ai_client=ai_client,
@@ -96,6 +101,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_upload_size_mb=settings.max_upload_size_mb,
             max_chunk_chars=settings.max_chunk_chars,
             max_chunks_per_document=settings.max_chunks_per_document,
+            entity_resolution_auto_match_threshold=settings.entity_resolution_auto_match_threshold,
+            entity_resolution_max_candidates=settings.entity_resolution_max_candidates,
+            learning_repository=LearningRepository(app.state.neo4j),
         )
         app.state.knowledge_assistant_service = KnowledgeAssistantService(
             query_planner=QueryPlanner(ai_client),
@@ -141,6 +149,7 @@ def create_app() -> FastAPI:
     app.include_router(gaps_router)
     app.include_router(curation_router)
     app.include_router(sources_router)
+    app.include_router(learning_router)
     app.include_router(graph_router)
     app.include_router(conflicts_router)
     app.include_router(assistant_router)

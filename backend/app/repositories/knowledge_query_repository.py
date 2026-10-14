@@ -66,7 +66,9 @@ class KnowledgeQueryRepository:
                 MATCH (claim:Claim)-[:SUBJECT]->(subject:Entity {namespace: $namespace, status: 'ACTIVE'})
                 WHERE claim.status IN $claim_statuses
                   AND ($predicate_count = 0 OR claim.predicate IN $predicates)
-                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(:Evidence) }
+                  AND (claim.valid_from IS NULL OR datetime(claim.valid_from) <= datetime())
+                  AND (claim.valid_to IS NULL OR datetime(claim.valid_to) > datetime())
+                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(current_evidence:Evidence) WHERE coalesce(current_evidence.is_current, true) }
                 OPTIONAL MATCH (claim)-[:OBJECT]->(object:Entity)
                 WITH claim, subject, object
                 WHERE (
@@ -78,6 +80,7 @@ class KnowledgeQueryRepository:
                 OPTIONAL MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)-[:FROM_SOURCE]->(source:KnowledgeSource)
                 OPTIONAL MATCH (evidence)-[:FROM_CHUNK]->(chunk:SourceChunk)<-[:HAS_CHUNK]-(version:SourceVersion)<-[:HAS_VERSION]-(document:SourceDocument)
                 WITH claim, subject, object, evidence, source, chunk, version, document
+                WHERE coalesce(evidence.is_current, true)
                 ORDER BY claim.created_at, claim.id, evidence.created_at, evidence.id
                 WITH claim, subject, object,
                      collect(CASE WHEN evidence IS NULL THEN NULL ELSE {

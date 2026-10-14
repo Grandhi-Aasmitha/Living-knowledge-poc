@@ -1,8 +1,9 @@
 import logging
-from typing import Any
+from dataclasses import asdict
+from typing import Any, Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.ai.client import AIProviderError
 from app.documents.chunker import ChunkLimitExceededError
@@ -12,6 +13,16 @@ from app.documents.storage import UploadTooLargeError
 
 router = APIRouter(prefix="/api/sources/files", tags=["sources"])
 logger = logging.getLogger(__name__)
+
+
+class EntityResolutionSummaryResponse(BaseModel):
+    observed_name: str
+    observed_type: str
+    action: Literal["MATCH", "CREATE", "NEEDS_REVIEW"]
+    canonical_entity_id: str | None = None
+    canonical_name: str | None = None
+    reason: str | None = None
+    alias_learned: bool = False
 
 
 class IngestionResponse(BaseModel):
@@ -26,12 +37,14 @@ class IngestionResponse(BaseModel):
     evidence_created: int
     claims_rejected: int
     unresolved_terms: list[str]
+    entity_resolutions: list[EntityResolutionSummaryResponse] = Field(default_factory=list)
 
 
 class SourceDocumentResponse(BaseModel):
     id: str
     title: str
     filename: str
+    namespace: str
     latest_version: int
     current_content_hash: str
     updated_at: str
@@ -50,11 +63,12 @@ async def upload_file(
     request: Request,
     file: UploadFile = File(...),
     namespace: str = Form("tstvs"),
+    force: bool = Form(False),
 ) -> IngestionResponse:
     service = _get_ingestion_service(request)
     try:
         content = await file.read()
-        result = await service.ingest(content=content, original_filename=file.filename or "", namespace=namespace)
+        result = await service.ingest(content=content, original_filename=file.filename or "", namespace=namespace, force=force)
     except UnsupportedDocumentTypeError as error:
         logger.info("Upload rejected unsupported_type namespace=%s", namespace)
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -83,7 +97,7 @@ async def upload_file(
         result.evidence_created,
         result.claims_rejected,
     )
-    return IngestionResponse(**result.__dict__)
+    return IngestionResponse(**asdict(result))
 
 
 @router.get("", response_model=list[SourceDocumentResponse])
@@ -97,6 +111,7 @@ async def list_files(request: Request) -> list[SourceDocumentResponse]:
             id=document.id,
             title=document.title,
             filename=document.filename,
+            namespace=document.namespace,
             latest_version=document.latest_version,
             current_content_hash=document.current_content_hash,
             updated_at=document.updated_at.isoformat(),

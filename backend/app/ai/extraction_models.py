@@ -70,6 +70,8 @@ class ExtractedKnowledge(BaseModel):
     @model_validator(mode="after")
     def claim_references_must_exist(self) -> "ExtractedKnowledge":
         entity_ids = {entity.temporary_id for entity in self.entities}
+        if len(entity_ids) != len(self.entities):
+            raise ValueError("temporary entity IDs must be unique within a chunk")
         for claim in self.claims:
             refs = [claim.subject, claim.object_entity, claim.scope_entity]
             for ref in refs:

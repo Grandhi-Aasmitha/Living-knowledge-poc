@@ -17,4 +17,5 @@ class Evidence(BaseModel):
     source_chunk_id: NonBlankString | None = None
     excerpt: NonBlankString | None = None
     locator: NonBlankString | None = None
+    is_current: bool = True
     created_at: datetime = Field(default_factory=utc_now)

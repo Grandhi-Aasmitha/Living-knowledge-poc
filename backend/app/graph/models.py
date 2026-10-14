@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GraphNode(BaseModel):
@@ -7,6 +7,7 @@ class GraphNode(BaseModel):
     entity_type: str
     namespace: str
     status: str
+    aliases: list[str] = Field(default_factory=list)
 
 
 class GraphEdge(BaseModel):
@@ -35,6 +36,7 @@ class EvidenceSummary(BaseModel):
     document_title: str | None
     document_version: int | None
     chunk_locator: str | None
+    is_current: bool = True
 
 
 class ClaimProvenanceResponse(BaseModel):

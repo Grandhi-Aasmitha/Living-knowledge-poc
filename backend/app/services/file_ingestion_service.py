@@ -1,9 +1,11 @@
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from app.ai.client import AIProviderError, StructuredAIClient
+from app.ai.entity_resolver import EntityResolver
 from app.ai.extraction_models import ExtractedClaim, ExtractedEntity, ExtractedKnowledge
 from app.ai.knowledge_extractor import KnowledgeExtractor
 from app.documents.chunker import DocumentChunker
@@ -21,12 +23,15 @@ from app.domain.identifiers import (
     stable_evidence_id,
     stable_source_document_id,
     stable_source_version_id,
+    sha256_text,
 )
 from app.domain.source import KnowledgeSource
 from app.repositories.claim_repository import ClaimRepository
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.entity_repository import EntityRepository
 from app.repositories.source_repository import SourceRepository
+from app.repositories.learning_repository import LearningRepository
+from app.learning.models import EntityMention, LearningBatch
 
 
 FILE_UPLOAD_SOURCE_ID = "source:file-upload"
@@ -46,6 +51,18 @@ class IngestionResult:
     evidence_created: int
     claims_rejected: int
     unresolved_terms: list[str] = field(default_factory=list)
+    entity_resolutions: list["EntityResolutionSummary"] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class EntityResolutionSummary:
+    observed_name: str
+    observed_type: str
+    action: str
+    canonical_entity_id: str | None = None
+    canonical_name: str | None = None
+    reason: str | None = None
+    alias_learned: bool = False
 
 
 @dataclass(frozen=True)
@@ -66,16 +83,35 @@ class FileIngestionService:
         max_upload_size_mb: int,
         max_chunk_chars: int,
         max_chunks_per_document: int,
+        entity_resolution_auto_match_threshold: float = 0.9,
+        entity_resolution_max_candidates: int = 5,
+        learning_repository: LearningRepository | None = None,
     ) -> None:
         self._storage = DocumentStorage(upload_directory, max_upload_size_mb)
         self._chunker = DocumentChunker(max_chunk_chars, max_chunks_per_document)
         self._extractor = KnowledgeExtractor(ai_client)
+        self._entity_resolver = EntityResolver(
+            ai_client=ai_client,
+            entity_repository=entity_repository,
+            auto_match_threshold=entity_resolution_auto_match_threshold,
+            max_candidates=entity_resolution_max_candidates,
+        )
         self._source_repository = source_repository
         self._document_repository = document_repository
         self._entity_repository = entity_repository
         self._claim_repository = claim_repository
+        self._learning_repository = learning_repository
+        self._document_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
-    async def ingest(self, content: bytes, original_filename: str, namespace: str = "tstvs") -> IngestionResult:
+    async def ingest(self, content: bytes, original_filename: str, namespace: str = "tstvs", force: bool = False) -> IngestionResult:
+        namespace = namespace.strip()
+        if not namespace:
+            raise ValueError("Team namespace is required")
+        key = (namespace, normalize_filename(safe_original_filename(original_filename)))
+        async with self._document_locks.setdefault(key, asyncio.Lock()):
+            return await self._ingest(content, original_filename, namespace, force)
+
+    async def _ingest(self, content: bytes, original_filename: str, namespace: str, force: bool = False) -> IngestionResult:
         filename = safe_original_filename(original_filename)
         if not is_supported_filename(filename):
             logger.info("Rejected unsupported upload extension=%s namespace=%s", _file_extension(filename), namespace)
@@ -83,7 +119,7 @@ class FileIngestionService:
         self._storage.validate_size(content)
         content_hash = self._storage.content_hash(content)
         external_id = normalize_filename(filename)
-        document_id = stable_source_document_id(filename)
+        document_id = stable_source_document_id(filename, namespace)
         logger.info(
             "Starting file ingestion document_id=%s extension=%s namespace=%s bytes=%d content_hash_prefix=%s",
             document_id,
@@ -92,8 +128,8 @@ class FileIngestionService:
             len(content),
             content_hash[:12],
         )
-        existing = await self._document_repository.get_document_by_external_id(FILE_UPLOAD_SOURCE_ID, external_id)
-        if existing is not None and existing.current_content_hash == content_hash:
+        existing = await self._document_repository.get_document_by_external_id(FILE_UPLOAD_SOURCE_ID, external_id, namespace)
+        if not force and existing is not None and existing.latest_version > 0 and existing.current_content_hash == content_hash:
             current_version = await self._document_repository.get_current_version(existing.id)
             logger.info(
                 "File ingestion unchanged document_id=%s version_id=%s namespace=%s",
@@ -113,6 +149,7 @@ class FileIngestionService:
                 evidence_created=0,
                 claims_rejected=0,
                 unresolved_terms=[],
+                entity_resolutions=[],
             )
 
         storage_key, path = self._storage.save(content, filename, content_hash)
@@ -123,7 +160,7 @@ class FileIngestionService:
             raise NoExtractableTextError("No extractable text found in the uploaded document.")
 
         next_version = 1 if existing is None else existing.latest_version + 1
-        version_id = stable_source_version_id(document_id, content_hash)
+        version_id = stable_source_version_id(document_id, content_hash, next_version)
         chunks = self._chunker.materialize(version_id, draft_chunks)
         logger.info(
             "File ingestion parsed document_id=%s version_id=%s extension=%s namespace=%s sections=%d chunks=%d next_version=%d",
@@ -138,7 +175,8 @@ class FileIngestionService:
         extracted_by_chunk: list[tuple[SourceChunk, ExtractedKnowledge]] = []
         for chunk in chunks:
             try:
-                extracted = await self._extractor.extract(chunk, namespace)
+                saved = await self._learning_repository.get_batch(f"batch:{chunk.id}") if self._learning_repository else None
+                extracted = saved.knowledge if saved is not None else await self._extractor.extract(chunk, namespace)
             except AIProviderError as error:
                 logger.warning(
                     "File ingestion AI extraction failed document_id=%s version_id=%s namespace=%s chunk_sequence=%d chunk_count=%d provider_error=%s",
@@ -177,8 +215,9 @@ class FileIngestionService:
             external_id=external_id,
             title=parsed.title,
             filename=filename,
-            latest_version=next_version,
-            current_content_hash=content_hash,
+            namespace=namespace,
+            latest_version=0,
+            current_content_hash="",
             created_at=now,
             updated_at=now,
         )
@@ -195,31 +234,116 @@ class FileIngestionService:
         )
         await self._document_repository.create_chunks(chunks)
 
-        entity_by_temp_id: dict[str, Entity] = {}
+        entities_by_chunk: dict[str, dict[str, Entity]] = {}
         seen_entity_ids: set[str] = set()
         created_entity_ids: set[str] = set()
         reused_entity_ids: set[str] = set()
         unresolved_terms: list[str] = []
-        for _, knowledge in extracted_by_chunk:
+        entity_resolutions: list[EntityResolutionSummary] = []
+        for chunk, knowledge in extracted_by_chunk:
+            batch = LearningBatch(
+                id=f"batch:{chunk.id}", namespace=namespace, source_id=source.id,
+                document_id=document.id, version_id=version.id, chunk_id=chunk.id,
+                content=chunk.content, locator=chunk.locator, knowledge=knowledge,
+            )
+            if self._learning_repository:
+                batch = await self._learning_repository.save_batch(batch)
             unresolved_terms.extend(knowledge.unresolved_terms)
+            chunk_entities: dict[str, Entity] = {}
+            entities_by_chunk[chunk.id] = chunk_entities
             for extracted_entity in knowledge.entities:
-                expected_id = stable_entity_id(namespace, extracted_entity.entity_type, extracted_entity.name)
-                existed = await self._entity_repository.find_by_name_or_alias(extracted_entity.name, namespace)
-                entity = await self._resolve_entity(extracted_entity, namespace, now, existed)
-                entity_by_temp_id[extracted_entity.temporary_id] = entity
+                mention_id = f"mention:{sha256_text(f'{chunk.id}:{extracted_entity.temporary_id}')[:24]}"
+                saved_mention = await self._learning_repository.get_mention(mention_id) if self._learning_repository else None
+                if saved_mention is not None:
+                    if saved_mention.status == "RESOLVED" and saved_mention.entity_id:
+                        saved_entity = await self._entity_repository.get(saved_mention.entity_id)
+                        if saved_entity is None or saved_entity.namespace != namespace or saved_entity.status != "ACTIVE":
+                            raise ValueError("Stored resolution references an unavailable entity")
+                        if extracted_entity.name.casefold() != saved_entity.canonical_name.casefold():
+                            saved_entity = await self._entity_repository.add_alias(saved_entity.id, extracted_entity.name, mention_id, saved_mention.reason)
+                        chunk_entities[extracted_entity.temporary_id] = saved_entity
+                        batch.bindings[extracted_entity.temporary_id] = saved_entity.id
+                        reused_entity_ids.add(saved_entity.id)
+                        entity_resolutions.append(EntityResolutionSummary(extracted_entity.name, extracted_entity.entity_type, "MATCH", saved_entity.id, saved_entity.canonical_name, "Previously recorded identity decision"))
+                        continue
+                    if saved_mention.status == "OPEN":
+                        unresolved_terms.append(f"{extracted_entity.name} (entity identity needs review)")
+                        entity_resolutions.append(EntityResolutionSummary(extracted_entity.name, extracted_entity.entity_type, "NEEDS_REVIEW", reason=saved_mention.reason))
+                        continue
+                resolution = await self._entity_resolver.resolve(
+                    extracted=extracted_entity,
+                    namespace=namespace,
+                    document_context=chunk.content,
+                )
+                if resolution.needs_review:
+                    if self._learning_repository:
+                        await self._learning_repository.save_mention(EntityMention(
+                            id=mention_id, batch_id=batch.id, namespace=namespace,
+                            observed=extracted_entity, candidates=resolution.candidates,
+                            reason=resolution.reason, confidence=resolution.confidence,
+                        ))
+                    unresolved_terms.append(f"{extracted_entity.name} (entity identity needs review)")
+                    entity_resolutions.append(
+                        EntityResolutionSummary(
+                            observed_name=extracted_entity.name,
+                            observed_type=extracted_entity.entity_type,
+                            action="NEEDS_REVIEW",
+                            reason=resolution.reason,
+                        )
+                    )
+                    logger.info(
+                        "Entity resolution needs review document_id=%s version_id=%s namespace=%s chunk_sequence=%d entity_type=%s",
+                        document.id,
+                        version.id,
+                        namespace,
+                        chunk.sequence,
+                        extracted_entity.entity_type,
+                    )
+                    continue
+                entity = resolution.entity
+                if resolution.created:
+                    entity = await self._create_entity(extracted_entity, namespace, now)
+                if entity is None:
+                    raise RuntimeError("Entity resolution did not produce an entity or review result")
+                if self._learning_repository:
+                    await self._learning_repository.save_mention(EntityMention(
+                        id=mention_id, batch_id=batch.id, namespace=namespace, observed=extracted_entity,
+                        status="RESOLVED", entity_id=entity.id, candidates=resolution.candidates,
+                        reason=resolution.reason, confidence=resolution.confidence,
+                        method="NEW" if resolution.created else "AI" if resolution.reason else "EXACT",
+                        resolved_at=now,
+                    ))
+                if resolution.alias_learned:
+                    entity = await self._entity_repository.add_alias(entity.id, extracted_entity.name, mention_id, resolution.reason)
+                chunk_entities[extracted_entity.temporary_id] = entity
+                batch.bindings[extracted_entity.temporary_id] = entity.id
+                entity_resolutions.append(
+                    EntityResolutionSummary(
+                        observed_name=extracted_entity.name,
+                        observed_type=extracted_entity.entity_type,
+                        action="CREATE" if resolution.created else "MATCH",
+                        canonical_entity_id=entity.id,
+                        canonical_name=entity.canonical_name,
+                        reason=resolution.reason,
+                        alias_learned=resolution.alias_learned,
+                    )
+                )
                 if entity.id in seen_entity_ids:
                     continue
                 seen_entity_ids.add(entity.id)
-                if existed is None and entity.id == expected_id:
+                if resolution.created:
                     created_entity_ids.add(entity.id)
                 else:
                     reused_entity_ids.add(entity.id)
+            if self._learning_repository:
+                await self._learning_repository.update_batch(batch)
 
         claims_created = 0
         claims_reused = 0
         evidence_created = 0
         claims_rejected = 0
         for chunk, knowledge in extracted_by_chunk:
+            chunk_entities = entities_by_chunk.get(chunk.id, {})
             for extracted_claim in knowledge.claims:
                 if not _evidence_is_supported(extracted_claim.evidence_text, chunk.content):
                     claims_rejected += 1
@@ -232,7 +356,17 @@ class FileIngestionService:
                         claims_rejected,
                     )
                     continue
-                resolved = self._build_claim(extracted_claim, entity_by_temp_id, chunk, source.id, now)
+                if not _claim_entities_are_resolved(extracted_claim, chunk_entities):
+                    claims_rejected += 1
+                    logger.info(
+                        "File ingestion deferred claim with unresolved entity document_id=%s version_id=%s namespace=%s chunk_sequence=%d",
+                        document.id,
+                        version.id,
+                        namespace,
+                        chunk.sequence,
+                    )
+                    continue
+                resolved = self._build_claim(extracted_claim, chunk_entities, chunk, source.id, now)
                 existing_claim = await self._claim_repository.find_equivalent_active(
                     subject_entity_id=resolved.claim.subject_entity_id,
                     predicate=resolved.claim.predicate,
@@ -250,7 +384,7 @@ class FileIngestionService:
                 await self._claim_repository.add_evidence(resolved.evidence.model_copy(update={"claim_id": claim_id}))
                 evidence_created += 1
 
-        await self._document_repository.mark_document_current(document.id, next_version, content_hash, now)
+        await self._document_repository.mark_document_current(document.id, next_version, content_hash, now, version.id)
         result = IngestionResult(
             document_id=document.id,
             version_id=version.id,
@@ -263,6 +397,7 @@ class FileIngestionService:
             evidence_created=evidence_created,
             claims_rejected=claims_rejected,
             unresolved_terms=sorted(set(unresolved_terms)),
+            entity_resolutions=entity_resolutions,
         )
         logger.info(
             "File ingestion completed document_id=%s version_id=%s namespace=%s chunks=%d entities_created=%d entities_reused=%d claims_created=%d claims_reused=%d evidence_created=%d claims_rejected=%d unresolved_terms=%d",
@@ -280,16 +415,13 @@ class FileIngestionService:
         )
         return result
 
-    async def _resolve_entity(
+    async def _create_entity(
         self,
         extracted: ExtractedEntity,
         namespace: str,
         now: datetime,
-        existing: Entity | None,
     ) -> Entity:
-        if existing is not None:
-            return existing
-        return await self._entity_repository.create(
+        entity = await self._entity_repository.create(
             Entity(
                 id=stable_entity_id(namespace, extracted.entity_type, extracted.name),
                 entity_type=extracted.entity_type,
@@ -297,11 +429,14 @@ class FileIngestionService:
                 description=extracted.description,
                 namespace=namespace,
                 status=EntityStatus.ACTIVE,
-                aliases=extracted.aliases,
+                aliases=[],
                 created_at=now,
                 updated_at=now,
             )
         )
+        if entity.namespace != namespace or entity.entity_type != extracted.entity_type or entity.canonical_name.casefold() != extracted.name.casefold() or entity.status != "ACTIVE":
+            raise ValueError("Canonical name collides with another or retired entity; choose a distinct canonical name")
+        return entity
 
     def _build_claim(
         self,
@@ -340,6 +475,7 @@ class FileIngestionService:
             source_chunk_id=chunk.id,
             excerpt=extracted.evidence_text,
             locator=chunk.locator,
+            is_current=False,
             created_at=now,
         )
         return _ResolvedClaim(claim=claim, evidence=evidence)
@@ -358,3 +494,8 @@ def _evidence_is_supported(evidence_text: str, chunk_content: str) -> bool:
     evidence = _normalize_evidence(evidence_text)
     content = _normalize_evidence(chunk_content)
     return evidence != "" and evidence in content
+
+
+def _claim_entities_are_resolved(claim: ExtractedClaim, entities: dict[str, Entity]) -> bool:
+    references = [claim.subject, claim.object_entity, claim.scope_entity]
+    return all(reference is None or reference in entities for reference in references)

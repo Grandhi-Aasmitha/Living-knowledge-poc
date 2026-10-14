@@ -68,12 +68,13 @@ class CompletenessRepository:
                   AND NOT EXISTS {
                     MATCH (claim:Claim)-[:SUBJECT]->(team:Entity)
                     MATCH (claim)-[:OBJECT]->(entity)
-                    MATCH (claim)-[:SUPPORTED_BY]->(:Evidence)
+                    MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)
                     WHERE claim.status IN $claim_statuses
                       AND claim.predicate IN $owner_predicates
                       AND team.namespace = $namespace
                       AND team.status = 'ACTIVE'
                       AND team.entity_type = 'TEAM'
+                      AND coalesce(evidence.is_current, true)
                   }
                 RETURN entity.id AS entity_id, entity.canonical_name AS entity_name
                 ORDER BY entity.canonical_name, entity.id
@@ -116,18 +117,20 @@ class CompletenessRepository:
                 MATCH (entity:Entity {namespace: $namespace, status: 'ACTIVE'})
                 WHERE entity.entity_type IN $target_entity_types
                   AND EXISTS {
-                    MATCH (present:Claim)-[:SUPPORTED_BY]->(:Evidence)
+                    MATCH (present:Claim)-[:SUPPORTED_BY]->(present_evidence:Evidence)
                     MATCH (present)-[:SUBJECT]->(:Entity {namespace: $namespace, status: 'ACTIVE'})
                     MATCH (present)-[:OBJECT]->(entity)
                     WHERE present.status IN $claim_statuses
                       AND present.predicate IN $present_predicates
+                      AND coalesce(present_evidence.is_current, true)
                   }
                   AND NOT EXISTS {
-                    MATCH (missing:Claim)-[:SUPPORTED_BY]->(:Evidence)
+                    MATCH (missing:Claim)-[:SUPPORTED_BY]->(missing_evidence:Evidence)
                     MATCH (missing)-[:SUBJECT]->(:Entity {namespace: $namespace, status: 'ACTIVE'})
                     MATCH (missing)-[:OBJECT]->(entity)
                     WHERE missing.status IN $claim_statuses
                       AND missing.predicate IN $missing_predicates
+                      AND coalesce(missing_evidence.is_current, true)
                   }
                 RETURN entity.id AS entity_id, entity.canonical_name AS entity_name
                 ORDER BY entity.canonical_name, entity.id

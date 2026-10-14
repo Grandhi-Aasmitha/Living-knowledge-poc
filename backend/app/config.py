@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     max_chunk_chars: int = 6000
     max_chunks_per_document: int = 20
+    entity_resolution_auto_match_threshold: float = 0.9
+    entity_resolution_max_candidates: int = 5
     assistant_max_claims: int = 25
     assistant_max_evidence_per_claim: int = 2
     assistant_max_evidence_chars: int = 600
@@ -49,6 +51,7 @@ class Settings(BaseSettings):
         "max_upload_size_mb",
         "max_chunk_chars",
         "max_chunks_per_document",
+        "entity_resolution_max_candidates",
         "assistant_max_claims",
         "assistant_max_evidence_per_claim",
         "assistant_max_evidence_chars",
@@ -58,6 +61,13 @@ class Settings(BaseSettings):
     def positive_integer_settings_must_be_positive(cls, value: int) -> int:
         if value <= 0:
             raise ValueError("numeric settings must be positive")
+        return value
+
+    @field_validator("entity_resolution_auto_match_threshold")
+    @classmethod
+    def resolution_threshold_must_be_a_probability(cls, value: float) -> float:
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("entity resolution threshold must be between 0.0 and 1.0")
         return value
 
 

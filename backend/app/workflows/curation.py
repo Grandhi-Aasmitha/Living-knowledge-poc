@@ -6,6 +6,10 @@ from langgraph.types import Command, interrupt
 
 from app.ai.answer_interpreter import AnswerInterpreter
 from app.ai.models import AnswerInterpretation, ClaimCandidate
+from app.ai.entity_resolver import EntityResolver
+from app.ai.extraction_models import ExtractedEntity, ExtractedClaim, ExtractedKnowledge
+from app.learning.models import EntityMention, LearningBatch
+from app.repositories.learning_repository import LearningRepository
 from app.ai.question_generator import QuestionGenerator
 from app.domain.claim import Claim
 from app.domain.entity import Entity
@@ -53,6 +57,8 @@ class CurationWorkflow:
         question_generator: QuestionGenerator,
         answer_interpreter: AnswerInterpreter,
         checkpointer: Any,
+        entity_resolver: EntityResolver | None = None,
+        learning_repository: LearningRepository | None = None,
     ) -> None:
         self._entity_repository = entity_repository
         self._claim_repository = claim_repository
@@ -60,6 +66,8 @@ class CurationWorkflow:
         self._gap_repository = gap_repository
         self._question_generator = question_generator
         self._answer_interpreter = answer_interpreter
+        self._entity_resolver = entity_resolver
+        self._learning_repository = learning_repository
         self._graph = self._build_graph(checkpointer)
 
     async def start(self, workflow_id: str, gap_id: str) -> dict[str, Any]:
@@ -231,10 +239,29 @@ class CurationWorkflow:
         if interpretation.entity_name is None or interpretation.entity_type is None:
             raise ValueError("UNRESOLVED_INTERPRETATION")
 
-        entity = await self._entity_repository.find_by_name_or_alias(
-            name=interpretation.entity_name,
-            namespace=state["namespace"],
-        )
+        observed = ExtractedEntity(temporary_id="answer", entity_type=interpretation.entity_type, name=interpretation.entity_name)
+        resolution = await self._entity_resolver.resolve(observed, state["namespace"], f"{state['question']}\n{state['engineer_answer']}") if self._entity_resolver else None
+        entity = resolution.entity if resolution else await self._entity_repository.find_by_name_or_alias(name=interpretation.entity_name, namespace=state["namespace"])
+        source = await self._source_repository.create(KnowledgeSource(
+            id=f"human:curation:{workflow_id}", source_type=SourceType.HUMAN,
+            title=f"Human clarification for {state['gap_id']}", external_id=workflow_id, version="1", created_at=now,
+        ))
+        if self._learning_repository and resolution is not None:
+            gap_entity = self._entity_from_state(state)
+            batch = await self._learning_repository.save_batch(LearningBatch(
+                id=f"batch:human:{workflow_id}", namespace=state["namespace"], source_id=source.id,
+                gap_id=state["gap_id"], content=state["engineer_answer"], locator=f"Question: {state['question']}",
+                knowledge=ExtractedKnowledge(entities=[observed, ExtractedEntity(temporary_id="gap", entity_type=gap_entity.entity_type, name=gap_entity.canonical_name)], claims=[ExtractedClaim(
+                    subject="answer", predicate=candidate.predicate, object_entity="gap", confidence=1.0, evidence_text=state["engineer_answer"],
+                )]), bindings={"gap": gap_entity.id}, claim_status="CONFIRMED",
+            ))
+            if resolution.needs_review:
+                await self._learning_repository.save_mention(EntityMention(
+                    id=f"mention:human:{workflow_id}", batch_id=batch.id, namespace=state["namespace"],
+                    observed=observed, candidates=resolution.candidates, reason=resolution.reason, confidence=resolution.confidence,
+                ))
+        if resolution is not None and resolution.needs_review:
+            return {**state, "status": "NEEDS_REVIEW"}
         if entity is None:
             entity = await self._entity_repository.create(
                 Entity(
@@ -248,17 +275,19 @@ class CurationWorkflow:
                 )
             )
 
-        source = await self._source_repository.create(
-            KnowledgeSource(
-                id=f"human:curation:{workflow_id}",
-                source_type=SourceType.HUMAN,
-                title=f"Human clarification for {state['gap_id']}",
-                external_id=workflow_id,
-                version="1",
-                created_at=now,
-            )
-        )
-        claim = await self._claim_repository.create(
+        if self._learning_repository and resolution is not None:
+            await self._learning_repository.save_mention(EntityMention(
+                id=f"mention:human:{workflow_id}", batch_id=batch.id, namespace=state["namespace"],
+                observed=observed, status="RESOLVED", entity_id=entity.id,
+                candidates=resolution.candidates, reason=resolution.reason, confidence=resolution.confidence,
+                method="NEW" if resolution.created else "AI" if resolution.reason else "EXACT", resolved_at=now,
+            ))
+            batch.bindings["answer"] = entity.id
+            await self._learning_repository.update_batch(batch)
+        if resolution is not None and resolution.alias_learned:
+            await self._entity_repository.add_alias(entity.id, observed.name, f"mention:human:{workflow_id}", resolution.reason)
+        existing_claim = await self._claim_repository.find_equivalent_active(entity.id, candidate.predicate, candidate.object_entity_id, None, None) if self._learning_repository else None
+        claim = existing_claim or await self._claim_repository.create(
             Claim(
                 id=f"curation:claim:{workflow_id}",
                 subject_entity_id=entity.id,
@@ -270,6 +299,8 @@ class CurationWorkflow:
                 updated_at=now,
             )
         )
+        if claim.status != ClaimStatus.CONFIRMED:
+            claim = await self._claim_repository.confirm(claim.id)
         await self._claim_repository.add_evidence(
             Evidence(
                 id=f"curation:evidence:{workflow_id}",

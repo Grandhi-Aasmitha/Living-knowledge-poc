@@ -3,6 +3,8 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
 import { ConflictReview } from './components/ConflictReview';
 import { GraphExplorer } from './components/GraphExplorer';
 import { KnowledgeAssistant } from './components/KnowledgeAssistant';
+import { IngestionResponse, LearningReport } from './components/LearningReport';
+import { ClarificationQueue } from './components/ClarificationQueue';
 import { API_ROOT } from './config';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
@@ -47,24 +49,11 @@ type GapDetectionResult = {
   open_automatic_gaps: number;
 };
 
-type IngestionResponse = {
-  document_id: string;
-  version_id: string | null;
-  status: 'INGESTED' | 'UNCHANGED';
-  chunks_processed: number;
-  entities_created: number;
-  entities_reused: number;
-  claims_created: number;
-  claims_reused: number;
-  evidence_created: number;
-  claims_rejected: number;
-  unresolved_terms: string[];
-};
-
 type SourceDocument = {
   id: string;
   title: string;
   filename: string;
+  namespace: string;
   latest_version: number;
   current_content_hash: string;
   updated_at: string;
@@ -85,8 +74,11 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [namespace, setNamespace] = useState('tstvs');
   const [ingestionMessage, setIngestionMessage] = useState('');
+  const [lastIngestion, setLastIngestion] = useState<{ result: IngestionResponse; filename: string } | null>(null);
+  const [graphRevision, setGraphRevision] = useState(0);
   const [documents, setDocuments] = useState<SourceDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [forceReprocess, setForceReprocess] = useState(false);
   const [detectionResult, setDetectionResult] = useState<GapDetectionResult | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
 
@@ -212,6 +204,7 @@ export default function App() {
         setCuration(null);
         setAnswer('');
         await loadGaps();
+        setGraphRevision((revision) => revision + 1);
         return;
       }
 
@@ -226,7 +219,9 @@ export default function App() {
 
   function selectFile(event: ChangeEvent<HTMLInputElement>) {
     setSelectedFile(event.target.files?.[0] ?? null);
+    setForceReprocess(false);
     setIngestionMessage('');
+    setLastIngestion(null);
   }
 
   async function uploadDocument(event: FormEvent<HTMLFormElement>) {
@@ -237,10 +232,12 @@ export default function App() {
 
     setIsUploading(true);
     setIngestionMessage('');
+    setLastIngestion(null);
 
     const formData = new FormData();
     formData.append('file', selectedFile);
     formData.append('namespace', namespace.trim());
+    formData.append('force', String(forceReprocess));
 
     try {
       const response = await fetch(SOURCES_URL, {
@@ -260,12 +257,12 @@ export default function App() {
       }
 
       const result = (await response.json()) as IngestionResponse;
+      setLastIngestion({ result, filename: selectedFile.name });
       if (result.status === 'UNCHANGED') {
-        setIngestionMessage('Document is unchanged; no extraction was run.');
+        setIngestionMessage('This document is already part of the team’s knowledge.');
       } else {
-        setIngestionMessage(
-          `Ingested ${result.chunks_processed} chunk(s), created ${result.entities_created} entity/entities and ${result.claims_created} claim(s).`,
-        );
+        setIngestionMessage('Learning complete. Review the new knowledge and uncertain terms below.');
+        setGraphRevision((revision) => revision + 1);
       }
       await loadDocuments();
     } catch {
@@ -294,24 +291,33 @@ export default function App() {
 
       <KnowledgeAssistant apiRoot={API_ROOT} />
 
-      <GraphExplorer apiRoot={API_ROOT} />
+      <GraphExplorer apiRoot={API_ROOT} refreshVersion={graphRevision} />
 
       <section className="status-card curator-card" aria-labelledby="ingestion-title">
-        <p className="eyebrow">Phase 4 Workflow</p>
-        <h2 id="ingestion-title">Document Ingestion</h2>
-        <p className="muted">Upload a synthetic PDF, DOCX, PPTX, TXT, or Markdown file for structured extraction.</p>
+        <p className="eyebrow">Grow team knowledge</p>
+        <h2 id="ingestion-title">Learn from a document</h2>
+        <p className="muted">Add a PDF, DOCX, PPTX, TXT, or Markdown document. The system connects mentions to known entities, remembers alternate names, and adds supported relationships.</p>
 
-        {ingestionMessage !== '' && <p className="message">{ingestionMessage}</p>}
+        {ingestionMessage !== '' && <p className="message" role="status">{ingestionMessage}</p>}
 
         <form className="answer-form" onSubmit={(event) => void uploadDocument(event)}>
           <label htmlFor="source-file">Source document</label>
-          <input id="source-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFile} />
+          <input id="source-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFile} disabled={isUploading} />
           <label htmlFor="namespace">Namespace</label>
-          <input id="namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+          <input id="namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} disabled={isUploading} />
+          <label className="inline-option">
+            <input type="checkbox" checked={forceReprocess} disabled={isUploading} onChange={(event) => setForceReprocess(event.target.checked)} />
+            Reprocess even if unchanged
+          </label>
+          <p className="muted">Use reprocess for earlier uploads or to reassess the document after a learning-policy change. It creates a new processing revision and preserves prior evidence.</p>
           <button disabled={isUploading || selectedFile === null || namespace.trim() === ''} type="submit">
-            {isUploading ? 'Processing...' : 'Upload and Process'}
+            {isUploading ? 'Reading and connecting knowledge…' : 'Upload and learn'}
           </button>
         </form>
+
+        {isUploading && <p className="muted" role="status">Reading the document, resolving names, and checking supporting evidence. Larger documents may take a few minutes.</p>}
+
+        {lastIngestion !== null && <LearningReport key={lastIngestion.result.version_id ?? lastIngestion.result.document_id} result={lastIngestion.result} filename={lastIngestion.filename} />}
 
         {documents.length > 0 && (
           <div className="document-list">
@@ -320,8 +326,9 @@ export default function App() {
                 <div>
                   <h3>{document.title}</h3>
                   <p>{document.filename}</p>
+                  <p className="muted">Team: {document.namespace}</p>
                 </div>
-                <span className="badge">v{document.latest_version}</span>
+                <span className="badge">{document.latest_version === 0 ? 'Incomplete — retry upload' : `v${document.latest_version}`}</span>
               </article>
             ))}
           </div>
@@ -380,6 +387,8 @@ export default function App() {
           </form>
         )}
       </section>
+
+      <ClarificationQueue apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} onKnowledgeUpdated={() => { setGraphRevision((revision) => revision + 1); void loadGaps(); }} />
 
       <ConflictReview />
     </main>

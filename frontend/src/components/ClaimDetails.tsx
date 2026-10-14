@@ -8,6 +8,7 @@ export type EvidenceSummary = {
   document_title: string | null;
   document_version: number | null;
   chunk_locator: string | null;
+  is_current?: boolean;
 };
 
 export type ClaimProvenance = {
@@ -76,6 +77,7 @@ export function ClaimDetails({ claim, isLoading, error }: ClaimDetailsProps) {
             <section className="evidence-item" key={item.id}>
               <strong>{item.source_title}</strong>
               <span className="badge">{item.source_type}</span>
+              {item.is_current === false && <span className="resolution-status resolution-status-review">Historical source version</span>}
               {item.excerpt !== null && <p>{item.excerpt}</p>}
               {item.locator !== null && <p className="muted">Locator: {item.locator}</p>}
               {item.document_title !== null && (

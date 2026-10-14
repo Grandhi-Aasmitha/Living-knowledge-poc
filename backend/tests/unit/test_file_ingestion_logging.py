@@ -22,7 +22,7 @@ class FailingStructuredAIClient:
 
 
 class FakeDocumentRepository:
-    async def get_document_by_external_id(self, source_id: str, external_id: str):
+    async def get_document_by_external_id(self, source_id: str, external_id: str, namespace: str):
         return None
 
 

@@ -9,7 +9,9 @@ def _document_from_node(node: Any) -> SourceDocument:
 
 
 def _version_from_node(node: Any) -> SourceVersion:
-    return SourceVersion(**dict(node))
+    properties = dict(node)
+    properties.setdefault("processing_status", "COMPLETE")
+    return SourceVersion(**properties)
 
 
 class DocumentRepository:
@@ -22,17 +24,19 @@ class DocumentRepository:
             record = await result.single()
         return None if record is None else _document_from_node(record["document"])
 
-    async def get_document_by_external_id(self, source_id: str, external_id: str) -> SourceDocument | None:
+    async def get_document_by_external_id(self, source_id: str, external_id: str, namespace: str = "tstvs") -> SourceDocument | None:
         async with self._client.session() as session:
             result = await session.run(
                 """
                 MATCH (:KnowledgeSource {id: $source_id})-[:HAS_DOCUMENT]->(document:SourceDocument {external_id: $external_id})
+                WHERE coalesce(document.namespace, 'tstvs') = $namespace
                 RETURN document
                 ORDER BY document.id
                 LIMIT 1
                 """,
                 source_id=source_id,
                 external_id=external_id,
+                namespace=namespace,
             )
             record = await result.single()
         return None if record is None else _document_from_node(record["document"])
@@ -120,22 +124,60 @@ class DocumentRepository:
             records = await result.data()
         return [_document_from_node(record["document"]) for record in records]
 
-    async def mark_document_current(self, document_id: str, version_number: int, content_hash: str, updated_at: Any) -> SourceDocument:
-        async with self._client.session() as session:
-            result = await session.run(
+    async def activate_version_evidence(self, document_id: str, version_id: str) -> None:
+        async def activate(tx):
+            result = await tx.run(
                 """
                 MATCH (document:SourceDocument {id: $document_id})
-                SET document.latest_version = $version_number,
+                SET document.lock_revision = coalesce(document.lock_revision, 0) + 1
+                WITH document WHERE document.current_version_id = $version_id
+                MATCH (document)-[:HAS_VERSION]->(:SourceVersion {id: $version_id})-[:HAS_CHUNK]->(:SourceChunk)<-[:FROM_CHUNK]-(evidence:Evidence)
+                SET evidence.is_current = true
+                RETURN count(evidence) AS count
+                """, document_id=document_id, version_id=version_id,
+            )
+            await result.consume()
+        async with self._client.session() as session:
+            await session.execute_write(activate)
+
+    async def mark_document_current(self, document_id: str, version_number: int, content_hash: str, updated_at: Any, version_id: str | None = None) -> SourceDocument:
+        async def publish(tx):
+            result = await tx.run(
+                """
+                MATCH (document:SourceDocument {id: $document_id})
+                SET document.lock_revision = coalesce(document.lock_revision, 0) + 1
+                WITH document
+                MATCH (document)-[:HAS_VERSION]->(version:SourceVersion)
+                WHERE ($version_id IS NULL AND version.version_number = $version_number) OR version.id = $version_id
+                SET document.latest_version = version.version_number,
                     document.current_content_hash = $content_hash,
-                    document.updated_at = $updated_at
-                RETURN document
+                    document.current_version_id = version.id,
+                    document.updated_at = $updated_at,
+                    version.processing_status = 'COMPLETE'
+                RETURN document, version.id AS version_id
                 """,
-                document_id=document_id,
-                version_number=version_number,
+                document_id=document_id, version_id=version_id, version_number=version_number,
                 content_hash=content_hash,
                 updated_at=updated_at.isoformat() if hasattr(updated_at, "isoformat") else updated_at,
             )
             record = await result.single()
-        if record is None:
-            raise ValueError("SourceDocument was not updated")
-        return _document_from_node(record["document"])
+            if record is None:
+                raise ValueError("SourceDocument version was not found")
+            await tx.run(
+                """
+                MATCH (:SourceDocument {id: $document_id})-[:HAS_VERSION]->(version:SourceVersion)-[:HAS_CHUNK]->(:SourceChunk)<-[:FROM_CHUNK]-(evidence:Evidence)
+                SET evidence.is_current = version.id = $version_id
+                """,
+                document_id=document_id, version_id=record["version_id"],
+            )
+            await tx.run(
+                """
+                MATCH (batch:LearningBatch {document_id: $document_id})-[:HAS_MENTION]->(mention:EntityMention {status: 'OPEN'})
+                WHERE batch.version_id <> $version_id
+                SET mention.status = 'SUPERSEDED'
+                """,
+                document_id=document_id, version_id=record["version_id"],
+            )
+            return _document_from_node(record["document"])
+        async with self._client.session() as session:
+            return await session.execute_write(publish)

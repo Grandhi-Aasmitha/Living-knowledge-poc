@@ -26,9 +26,14 @@ class GraphRepository(Neo4jClient):
                   AND object.namespace = $namespace
                   AND subject.status = 'ACTIVE'
                   AND object.status = 'ACTIVE'
+                  AND (claim.valid_from IS NULL OR datetime(claim.valid_from) <= datetime())
+                  AND (claim.valid_to IS NULL OR datetime(claim.valid_to) > datetime())
+                  AND (NOT EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(:Evidence) }
+                       OR EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(current_evidence:Evidence) WHERE coalesce(current_evidence.is_current, true) })
                   AND ($entity_types IS NULL OR subject.entity_type IN $entity_types OR object.entity_type IN $entity_types)
                   AND ($focus_entity_id IS NULL OR subject.id = $focus_entity_id OR object.id = $focus_entity_id)
                 OPTIONAL MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)
+                WHERE coalesce(evidence.is_current, true)
                 WITH claim, subject, object, count(DISTINCT evidence) AS evidence_count
                 ORDER BY claim.created_at, claim.id
                 RETURN collect({claim: claim, subject: subject, object: object, evidence_count: evidence_count}) AS rows
@@ -60,6 +65,7 @@ class GraphRepository(Neo4jClient):
                         entity_type=entity["entity_type"],
                         namespace=entity["namespace"],
                         status=entity["status"],
+                        aliases=entity.get("aliases") or [],
                     )
             if truncated:
                 break
@@ -126,6 +132,7 @@ class GraphRepository(Neo4jClient):
                     document_title=None if document is None else document.get("title"),
                     document_version=None if version is None else version.get("version_number"),
                     chunk_locator=None if chunk is None else chunk.get("locator"),
+                    is_current=evidence_node.get("is_current", True),
                 )
             )
 

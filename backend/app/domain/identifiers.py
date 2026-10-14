@@ -26,12 +26,12 @@ def normalize_filename(filename: str) -> str:
     return re.sub(r"\s+", " ", filename.strip()).casefold()
 
 
-def stable_source_document_id(filename: str) -> str:
-    return f"file:document:{sha256_text(normalize_filename(filename))[:24]}"
+def stable_source_document_id(filename: str, namespace: str = "tstvs") -> str:
+    return f"file:document:{sha256_text(f'{namespace}:{normalize_filename(filename)}')[:24]}"
 
 
-def stable_source_version_id(document_id: str, content_hash: str) -> str:
-    return f"file:version:{sha256_text(f'{document_id}:{content_hash}')[:24]}"
+def stable_source_version_id(document_id: str, content_hash: str, version_number: int = 1) -> str:
+    return f"file:version:{sha256_text(f'{document_id}:{content_hash}:{version_number}')[:24]}"
 
 
 def stable_source_chunk_id(version_id: str, sequence: int, content_hash: str) -> str:

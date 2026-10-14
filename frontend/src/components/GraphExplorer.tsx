@@ -9,6 +9,7 @@ type GraphNode = {
   entity_type: string;
   namespace: string;
   status: string;
+  aliases?: string[];
 };
 
 type GraphEdge = {
@@ -40,12 +41,13 @@ type SelectedEntity = GraphNode & {
 
 type GraphExplorerProps = {
   apiRoot: string;
+  refreshVersion?: number;
 };
 
 const COMMON_ENTITY_TYPES = ['SERVICE', 'TOPIC', 'TEAM', 'BUSINESS_CONCEPT', 'SYSTEM', 'API', 'DATABASE'];
 const STATUS_OPTIONS = ['CONFIRMED', 'PROPOSED'];
 
-export function GraphExplorer({ apiRoot }: GraphExplorerProps) {
+export function GraphExplorer({ apiRoot, refreshVersion = 0 }: GraphExplorerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Core | null>(null);
   const [namespace, setNamespace] = useState('tstvs');
@@ -91,7 +93,7 @@ export function GraphExplorer({ apiRoot }: GraphExplorerProps) {
     }
 
     void loadGraph();
-  }, [apiRoot, namespace, selectedStatuses, entityType]);
+  }, [apiRoot, namespace, selectedStatuses, entityType, refreshVersion]);
 
   useEffect(() => {
     if (containerRef.current === null) {
@@ -236,7 +238,8 @@ export function GraphExplorer({ apiRoot }: GraphExplorerProps) {
       return;
     }
     const match = graph.nodes.find(
-      (node) => node.label.toLowerCase().includes(query) || node.id.toLowerCase().includes(query),
+      (node) => node.label.toLowerCase().includes(query) || node.id.toLowerCase().includes(query)
+        || node.aliases?.some((alias) => alias.toLowerCase().includes(query)),
     );
     if (match === undefined) {
       return;
@@ -284,7 +287,7 @@ export function GraphExplorer({ apiRoot }: GraphExplorerProps) {
         </label>
         <label>
           Search loaded graph
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Service or entity id" />
+          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Name, alias, or entity ID" />
         </label>
         <button type="button" onClick={runSearch}>
           Find
@@ -313,6 +316,10 @@ export function GraphExplorer({ apiRoot }: GraphExplorerProps) {
                 <div><dt>Type</dt><dd>{selectedEntity.entity_type}</dd></div>
                 <div><dt>ID</dt><dd>{selectedEntity.id}</dd></div>
                 <div><dt>Namespace</dt><dd>{selectedEntity.namespace}</dd></div>
+                <div>
+                  <dt>Also known as</dt>
+                  <dd>{selectedEntity.aliases?.length ? selectedEntity.aliases.join(', ') : 'No alternate names learned yet.'}</dd>
+                </div>
               </dl>
               <h3>Loaded relationships</h3>
               {selectedEntity.relationships.length === 0 ? (

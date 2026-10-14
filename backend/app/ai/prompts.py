@@ -26,6 +26,11 @@ def get_extraction_prompt() -> str:
 
 
 @lru_cache
+def get_entity_resolution_prompt() -> str:
+    return _read_prompt("entity_resolution/v1.md")
+
+
+@lru_cache
 def get_assistant_query_planning_prompt() -> str:
     return _read_prompt("assistant/query_planning/v1.md")
 
