@@ -17,12 +17,14 @@ Implemented phases:
 
 This POC is for local development/demo use only. Write-capable endpoints are intentionally unauthenticated for local iteration and must not be exposed on a public network without adding authentication and CSRF protection.
 
+For current macOS/Linux and Windows startup instructions, AI provider configuration, verification, and troubleshooting, see [SETUP.md](SETUP.md).
+
 ## Prerequisites
 
 - Python 3.13
 - Node.js and npm
 - Podman and Podman Compose
-- Azure OpenAI configuration for runtime curation endpoints
+- Authenticated Tabnine CLI (default) or Azure OpenAI configuration for AI-backed features; see [SETUP.md](SETUP.md)
 - On this machine, Podman may be run from WSL; use the same commands from the WSL shell if Podman is not available in PowerShell.
 
 ## Environment setup
@@ -35,9 +37,10 @@ Copy-Item .env.example .env
 
 Edit `.env` and replace `change-this-password` with a local password. The `.env` file is gitignored and must not be committed.
 
-For Phase 3 runtime curation, also set:
+If choosing Azure OpenAI instead of the default Tabnine CLI, also set:
 
 ```env
+AI_PROVIDER=azure_openai
 AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/openai/v1/
 AZURE_OPENAI_API_KEY=<local-secret>
 AZURE_OPENAI_MODEL=<deployment-or-model-name>
@@ -46,7 +49,7 @@ ENTITY_RESOLUTION_AUTO_MATCH_THRESHOLD=0.9
 ENTITY_RESOLUTION_MAX_CANDIDATES=5
 ```
 
-Leave Azure values empty when you only need health/entity/gap APIs or automated tests. The backend still starts, and curation endpoints return HTTP 503 until AI is configured.
+Leave Azure values empty when using Tabnine or when you only need existing knowledge and automated tests. If the selected AI provider cannot initialize, the backend still starts but AI-backed endpoints return HTTP 503. See [SETUP.md](SETUP.md) for both provider options.
 
 The canonical `.env` location is the repository root. The backend resolves this file with `pathlib.Path`, so settings do not depend on the shell current working directory.
 
@@ -99,7 +102,7 @@ Open gaps: 1
 Run from `backend` with the virtual environment activated:
 
 ```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 FastAPI starts even if Neo4j is temporarily unavailable. The health endpoint reports Neo4j availability dynamically and does not depend on Azure OpenAI.
@@ -149,7 +152,7 @@ The graph refreshes after a successful upload or gap resolution. Node details sh
 
 1. Ensure Neo4j is running.
 2. Run the Phase 2 seed.
-3. Configure Azure OpenAI in `.env`.
+3. Configure Tabnine CLI or Azure OpenAI in `.env` as described in [SETUP.md](SETUP.md).
 4. Start FastAPI.
 5. Open the frontend at <http://localhost:5173>.
 6. In `Knowledge Curator`, click `Resolve` for the open Scheduled Dispatch consumer gap.
