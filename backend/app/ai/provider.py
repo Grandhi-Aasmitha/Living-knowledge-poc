@@ -3,7 +3,7 @@ from shutil import which
 
 from app.ai.client import AIProviderError, StructuredAIClient
 from app.ai.local_rules_client import LocalRulesClient
-from app.ai.model import build_ai_model
+from app.ai.model import build_ai_model, build_openai_model
 from app.ai.pydantic_ai_client import PydanticAIClient
 from app.ai.tabnine_cli_client import TabnineCliClient
 from app.config import Settings
@@ -26,6 +26,12 @@ def build_structured_ai_client(settings: Settings) -> StructuredAIClient:
         model = build_ai_model(settings)
         if model is None:
             raise AIProviderError("Azure OpenAI configuration is incomplete")
+        return PydanticAIClient(model)
+
+    if settings.ai_provider == "openai":
+        model = build_openai_model(settings)
+        if model is None:
+            raise AIProviderError("OpenAI configuration is incomplete; set OPENAI_API_KEY and OPENAI_MODEL")
         return PydanticAIClient(model)
 
     raise AIProviderError("Unknown AI provider")

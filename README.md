@@ -7,7 +7,7 @@ Implemented phases:
 - Phase 1: FastAPI, React/Vite, Neo4j Community via Podman Compose, and health checks.
 - Phase 2: canonical knowledge model, controlled ontology, Neo4j repositories, read-only entity/gap APIs, and TSTVS seed data.
 - Phase 3: human-in-the-loop curation workflow using LangGraph interrupt/resume checkpointing.
-- Phase 3.1: provider-neutral `StructuredAIClient` with Tabnine CLI by default and optional Azure OpenAI/PydanticAI when explicitly configured.
+- Phase 3.1: provider-neutral `StructuredAIClient` with Tabnine CLI by default and optional OpenAI or Azure OpenAI through PydanticAI when explicitly configured.
 - Phase 4: document ingestion, structured knowledge extraction, and contextual entity resolution for PDF, DOCX, PPTX, TXT, and Markdown uploads.
 - Phase 5: graph explorer with provenance views.
 - Phase 6: automatic knowledge gap detection.
@@ -24,7 +24,7 @@ For current macOS/Linux and Windows startup instructions, AI provider configurat
 - Python 3.13
 - Node.js and npm
 - Podman and Podman Compose
-- Authenticated Tabnine CLI (default) or Azure OpenAI for AI-backed features. Explicit document relationships can also be ingested offline with `AI_PROVIDER=local_rules`; see [SETUP.md](SETUP.md).
+- Authenticated Tabnine CLI (default), OpenAI API access, or Azure OpenAI for AI-backed features. Explicit document relationships can also be ingested offline with `AI_PROVIDER=local_rules`; see [SETUP.md](SETUP.md).
 - On this machine, Podman may be run from WSL; use the same commands from the WSL shell if Podman is not available in PowerShell.
 
 ## Environment setup
@@ -49,7 +49,9 @@ ENTITY_RESOLUTION_AUTO_MATCH_THRESHOLD=0.9
 ENTITY_RESOLUTION_MAX_CANDIDATES=5
 ```
 
-Leave Azure values empty when using Tabnine, local rules, or when you only need existing knowledge and automated tests. Set `AI_PROVIDER=local_rules` to upload explicit relationships without AI credentials; assistant and AI-backed curation remain unavailable in this mode. If the selected AI provider cannot initialize, the backend still starts but AI-backed endpoints return HTTP 503. See [SETUP.md](SETUP.md) for all modes.
+Leave Azure values empty when using Tabnine, OpenAI, local rules, or when you only need existing knowledge and automated tests. Set `AI_PROVIDER=local_rules` to upload explicit relationships without AI credentials; assistant and AI-backed curation remain unavailable in this mode. If the selected AI provider cannot initialize, the backend still starts but AI-backed endpoints return HTTP 503. See [SETUP.md](SETUP.md) for all modes.
+
+To use the OpenAI API for uploads, curation, and the Knowledge Assistant, set `AI_PROVIDER=openai`, `OPENAI_API_KEY`, and `OPENAI_MODEL` in the root `.env`. Pick a model with structured output support. The [setup guide](SETUP.md) has the full configuration steps. Keep API keys out of Git.
 
 The canonical `.env` location is the repository root. The backend resolves this file with `pathlib.Path`, so settings do not depend on the shell current working directory.
 
@@ -124,7 +126,7 @@ Run from `backend` with dependencies installed:
 python -m pytest
 ```
 
-Automated tests use deterministic fake/PydanticAI FunctionModel behavior and do not require Azure credentials.
+Automated tests use deterministic fake/PydanticAI FunctionModel behavior and do not require Azure or OpenAI credentials.
 
 Run integration tests against a disposable Neo4j instance using the `NEO4J_*` environment settings. They create and clean up fixture data. The ingestion fixture cleanup is scoped to its own documents and entities and preserves the shared upload source.
 
@@ -152,7 +154,7 @@ The graph refreshes after a successful upload or gap resolution. Node details sh
 
 1. Ensure Neo4j is running.
 2. Run the Phase 2 seed.
-3. Configure Tabnine CLI or Azure OpenAI in `.env` as described in [SETUP.md](SETUP.md).
+3. Configure Tabnine CLI, OpenAI, or Azure OpenAI in `.env` as described in [SETUP.md](SETUP.md).
 4. Start FastAPI.
 5. Open the frontend at <http://localhost:5173>.
 6. In `Knowledge Curator`, click `Resolve` for the open Scheduled Dispatch consumer gap.

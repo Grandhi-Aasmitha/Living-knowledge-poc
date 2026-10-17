@@ -1,5 +1,6 @@
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.azure import AzureProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 
 from app.config import Settings
 
@@ -21,3 +22,13 @@ def build_ai_model(settings: Settings) -> OpenAIChatModel | None:
         api_key=settings.azure_openai_api_key.get_secret_value(),
     )
     return OpenAIChatModel(settings.azure_openai_model, provider=provider)
+
+
+def build_openai_model(settings: Settings) -> OpenAIChatModel | None:
+    if settings.openai_api_key is None or not _has_value(settings.openai_api_key.get_secret_value()):
+        return None
+    if not _has_value(settings.openai_model):
+        return None
+
+    provider = OpenAIProvider(api_key=settings.openai_api_key.get_secret_value())
+    return OpenAIChatModel(settings.openai_model, provider=provider)
