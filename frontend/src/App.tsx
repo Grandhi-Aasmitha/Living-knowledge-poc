@@ -5,6 +5,7 @@ import { GraphExplorer } from './components/GraphExplorer';
 import { KnowledgeAssistant } from './components/KnowledgeAssistant';
 import { IngestionResponse, LearningReport } from './components/LearningReport';
 import { ClarificationQueue } from './components/ClarificationQueue';
+import { ClaimReview } from './components/ClaimReview';
 import { API_ROOT } from './config';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
@@ -338,6 +339,8 @@ export default function App() {
           </div>
         )}
       </section>
+
+      <ClaimReview apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} onKnowledgeUpdated={() => setGraphRevision((revision) => revision + 1)} />
 
       <section className="status-card curator-card" aria-labelledby="curator-title">
         <p className="eyebrow">Phase 6 Workflow</p>

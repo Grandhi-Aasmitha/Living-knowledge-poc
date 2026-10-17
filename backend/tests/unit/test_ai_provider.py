@@ -16,6 +16,9 @@ def settings(**overrides) -> Settings:
         "neo4j_password": "test-password",
         "neo4j_database": "neo4j",
         "frontend_origin": "http://localhost:5173",
+        "azure_openai_endpoint": None,
+        "azure_openai_api_key": None,
+        "azure_openai_model": None,
     }
     values.update(overrides)
     return Settings(**values)

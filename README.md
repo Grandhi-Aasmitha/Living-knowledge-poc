@@ -14,6 +14,7 @@ Implemented phases:
 - Phase 8: conflict detection and human resolution.
 - Phase 9: read-only Knowledge Assistant with typed bounded planning, deterministic retrieval, evidence-backed answers, citation validation, and deterministic golden evaluation.
 - Team learning: durable source observations, identity questions, human decisions, recovered claims, alias provenance, source-version reconciliation, and longitudinal integration checks.
+- Uploaded claim review: a namespace-scoped queue of proposed file claims with source evidence, human confirm/reject decisions, recorded reasons, and a way to reopen a decision.
 
 This POC is for local development/demo use only. Write-capable endpoints are intentionally unauthenticated for local iteration and must not be exposed on a public network without adding authentication and CSRF protection.
 
@@ -137,6 +138,8 @@ High-confidence matches reuse the canonical entity and store the observed name a
 After an upload, the UI shows a learning report with new and recognized entities, aliases learned, new facts, and unresolved terms. Filter the report by outcome and expand an AI decision to read its explanation. The upload summary clears on reload, while **Questions for the team** loads saved identity questions from Neo4j. Choose the correct existing entity or establish a separate entity, explain the decision, and the system remembers the name and applies its waiting claims. Recorded decisions are also browsable and can safely be re-applied after a failed materialization.
 
 `LearningBatch` preserves extracted proposals and source context; `EntityMention` preserves decisions and human reasons; `AliasBinding` reserves learned names and records their provenance. Human identity confirmation does not automatically confirm claims extracted from files. Source files are identified within a team namespace. Failed ingestion does not mark the file current; retries reuse saved proposals. Publishing a new version deactivates the prior version's evidence without deleting history. Current graph queries, gap/conflict scans, and assistant retrieval respect evidence activity; assistant retrieval also respects claim validity dates.
+
+The **Review uploaded claims** section lists proposed claims with current file evidence in the selected namespace. Select a claim to inspect its source excerpt and document version, then enter a reviewer name and reason to **Confirm** or **Reject** it. Decisions are recorded in Neo4j; reviewed claims can be reopened for another review. Confirmed claims appear as confirmed in the graph and can support a confirmed Assistant answer when no cited claim is proposed and no gap or conflict is open. Rejected claims are excluded from the default graph and Assistant retrieval. Reuploading the same rejected fact does not silently restore it. The local POC has no authentication, so reviewer names are self-reported.
 
 Existing duplicate nodes are not silently merged. Alias conflicts require explicit duplicate reconciliation, which remains a separate future workflow. Older file documents without a namespace are treated as belonging to the original `tstvs` namespace. Legacy knowledge with no processing-status or evidence-activity field keeps its previous behavior until a new version is published.
 

@@ -200,8 +200,9 @@ Restart Vite after changing that file. If you change the UI address or port, upd
 2. Under **Learn from a document**, select a PDF, DOCX, PPTX, TXT, or Markdown file and a team namespace, such as `tstvs`. Click **Upload and learn**. The default file limit is 10 MB; documents must contain extractable text (there is no OCR step).
 3. Read the learning report for new entities, recognized names, learned aliases, and unresolved terms.
 4. In **Questions for the team**, choose the correct existing entity or create a separate entity, explain the decision, and apply it. The decision persists in Neo4j and applies supported relationships that were waiting for that identity.
-5. Use **Recorded decisions** to inspect the remembered reason and original evidence. The graph refreshes after a decision or successful upload.
-6. With Tabnine or Azure OpenAI configured, ask the **Knowledge Assistant** a question about the uploaded material using the same namespace. Inspect its supporting evidence and proposed/confirmed status; it should not invent missing knowledge. The assistant is unavailable in local rules mode.
+5. In **Review uploaded claims**, use the same namespace. Select a proposed claim, read its current file evidence, then enter your name and a reason to **Confirm** or **Reject** it. The decision and reason appear under **Recorded decisions** in that section; a reviewed claim can be reopened if the decision needs correction. This is separate from resolving an entity name under **Questions for the team**.
+6. Use the other **Recorded decisions** section to inspect remembered entity-identity decisions and original evidence. The graph refreshes after a claim decision, identity decision, or successful upload.
+7. With Tabnine or Azure OpenAI configured, ask the **Knowledge Assistant** a question about the uploaded material using the same namespace. Inspect its supporting evidence and proposed/confirmed status; it should not invent missing knowledge. The assistant is unavailable in local rules mode.
 
 Use the same filename and namespace when replacing a document. A successful replacement preserves history and makes the new version's evidence current. Identical uploads normally skip extraction; select **Reprocess even if unchanged** to analyze an earlier upload with the current learning policy. Existing duplicate nodes are not automatically merged.
 

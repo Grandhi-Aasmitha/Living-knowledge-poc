@@ -387,9 +387,13 @@ class FileIngestionService:
                     scope_entity_id=resolved.claim.scope_entity_id,
                 )
                 if existing_claim is None:
-                    await self._claim_repository.create(resolved.claim)
-                    claim_id = resolved.claim.id
-                    claims_created += 1
+                    stored_claim = await self._claim_repository.create(resolved.claim)
+                    claim_id = stored_claim.id
+                    if stored_claim.status == ClaimStatus.PROPOSED:
+                        claims_created += 1
+                    else:
+                        # A prior decision keeps its stable claim ID and status on reupload.
+                        claims_reused += 1
                 else:
                     claim_id = existing_claim.id
                     claims_reused += 1
