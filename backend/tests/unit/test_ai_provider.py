@@ -16,8 +16,6 @@ def settings(**overrides) -> Settings:
         "neo4j_password": "test-password",
         "neo4j_database": "neo4j",
         "frontend_origin": "http://localhost:5173",
-        "openai_api_key": None,
-        "openai_model": None,
     }
     values.update(overrides)
     return Settings(**values)
@@ -47,33 +45,6 @@ def test_azure_provider_builds_pydantic_ai_client() -> None:
     )
 
     assert isinstance(client, PydanticAIClient)
-
-
-def test_openai_provider_builds_pydantic_ai_client() -> None:
-    client = build_structured_ai_client(
-        settings(
-            ai_provider="openai",
-            openai_api_key=SecretStr("test-key"),
-            openai_model="test-model",
-        )
-    )
-
-    assert isinstance(client, PydanticAIClient)
-    assert client._model.model_name == "test-model"
-
-
-@pytest.mark.parametrize(
-    ("key", "model"),
-    [
-        (None, "test-model"),
-        (SecretStr("test-key"), None),
-        (SecretStr("   "), "test-model"),
-        (SecretStr("test-key"), "   "),
-    ],
-)
-def test_incomplete_openai_config_is_provider_unavailable(key, model) -> None:
-    with pytest.raises(AIProviderError, match="OPENAI_API_KEY and OPENAI_MODEL"):
-        build_structured_ai_client(settings(ai_provider="openai", openai_api_key=key, openai_model=model))
 
 
 def test_invalid_provider_is_rejected_by_settings() -> None:

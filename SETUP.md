@@ -10,7 +10,7 @@ This is a development POC, not a production deployment. Write endpoints have no 
 - Python **3.13** (the backend requires `>=3.13,<3.14`).
 - Node.js and npm. The checked-in frontend lockfile requires Node **20.19+ within version 20**, or **22.12+**.
 - Podman with Compose support, or Docker with Compose support, for Neo4j.
-- For AI features: an installed, authenticated Tabnine CLI, configured Azure OpenAI access, or an OpenAI API key. You only need one provider.
+- For AI features: an installed, authenticated Tabnine CLI **or** configured Azure OpenAI access. You do not need both.
 
 Check your tools:
 
@@ -61,7 +61,7 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 Keep the remaining template settings unless you need to customize them. `.env` is ignored by Git; never commit credentials. The backend reads this root file regardless of the terminal's working directory. Environment variables already exported in the shell take precedence, so check them if settings seem unexpected.
 
-### Choose an AI provider or offline extraction mode
+### Choose a document extraction mode
 
 **Option A — Tabnine CLI (default)**
 
@@ -94,19 +94,7 @@ AZURE_OPENAI_MODEL=<your-deployment-name>
 
 Use a deployment that supports the application's structured JSON responses. Setting Azure credentials without changing `AI_PROVIDER` will still select Tabnine.
 
-**Option C — OpenAI API**
-
-Create an OpenAI API key for an account with API access. Set these values in the root `.env`:
-
-```dotenv
-AI_PROVIDER=openai
-OPENAI_API_KEY=<your-secret-key>
-OPENAI_MODEL=gpt-5.4-mini
-```
-
-`gpt-5.4-mini` supports Chat Completions, function calling, and structured outputs; use another model if your account does not have access to it. This option enables document extraction and entity resolution, the Knowledge Curator, and the Knowledge Assistant. The backend sends document text, names, and assistant questions to the selected provider as needed. API requests may incur charges. Restart the backend after editing `.env`. An OpenAI API key is separate from a ChatGPT subscription. See the [OpenAI model details](https://developers.openai.com/api/docs/models/gpt-5.4-mini) and [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs).
-
-**Option D — Local rules (no AI credentials)**
+**Option C — Local rules (no AI credentials)**
 
 Set `AI_PROVIDER=local_rules` in the root `.env`. Uploads then recognize explicit relationships in any supported text-bearing document format. Use one fact per sentence or pipe-separated line, for example:
 
@@ -213,7 +201,7 @@ Restart Vite after changing that file. If you change the UI address or port, upd
 3. Read the learning report for new entities, recognized names, learned aliases, and unresolved terms.
 4. In **Questions for the team**, choose the correct existing entity or create a separate entity, explain the decision, and apply it. The decision persists in Neo4j and applies supported relationships that were waiting for that identity.
 5. Use **Recorded decisions** to inspect the remembered reason and original evidence. The graph refreshes after a decision or successful upload.
-6. With Tabnine, Azure OpenAI, or OpenAI configured, ask the **Knowledge Assistant** a question about the uploaded material using the same namespace. Inspect its supporting evidence and proposed/confirmed status; it should not invent missing knowledge. The assistant is unavailable in local rules mode.
+6. With Tabnine or Azure OpenAI configured, ask the **Knowledge Assistant** a question about the uploaded material using the same namespace. Inspect its supporting evidence and proposed/confirmed status; it should not invent missing knowledge. The assistant is unavailable in local rules mode.
 
 Use the same filename and namespace when replacing a document. A successful replacement preserves history and makes the new version's evidence current. Identical uploads normally skip extraction; select **Reprocess even if unchanged** to analyze an earlier upload with the current learning policy. Existing duplicate nodes are not automatically merged.
 
@@ -264,7 +252,7 @@ Local state lives in Neo4j's named volumes, `data/uploads`, and `data/langgraph_
 | Python dependency installation fails | Verify the active interpreter is Python 3.13 and recreate only the project's virtual environment if it was made with another version. |
 | Vite reports an unsupported Node version | Compare `node --version` with the prerequisite above, then reinstall dependencies with `npm ci`. |
 | Database shows DOWN | Check container runtime, Compose logs, port 7687, credentials, and whether shell environment variables override `.env`. Restart the backend after the database becomes ready. |
-| AI features are unavailable | Check `AI_PROVIDER`, the selected provider's credentials and model settings, and backend logs. Restart the backend after configuration changes. |
+| AI features are unavailable | Check `AI_PROVIDER`, CLI path/authentication or all three Azure settings, and backend logs. Restart the backend after configuration changes. |
 | Upload times out or returns a provider error | Check provider connectivity, authentication, schema-valid responses, and `TABNINE_TIMEOUT_SECONDS` when using Tabnine. Try a short text document first. |
 | UI cannot reach the API | Check the backend health URL, `VITE_API_ROOT`, and the exact `FRONTEND_ORIGIN`. Restart the relevant server after changes. |
 | Port is already in use | Stop the known conflicting project process or deliberately choose another port and update the corresponding settings. Do not stop unrelated services blindly. |

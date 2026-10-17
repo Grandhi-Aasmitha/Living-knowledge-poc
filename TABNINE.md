@@ -60,7 +60,6 @@ Architectural rules:
 - StructuredAIClient = AI provider boundary
 - Tabnine CLI = default current POC AI provider
 - PydanticAI/Azure OpenAI = optional StructuredAIClient adapter for local POC runtime when explicitly configured
-- PydanticAI/OpenAI API = optional StructuredAIClient adapter for document extraction, curation, and the Knowledge Assistant when explicitly configured
 - Local rules = optional offline StructuredAIClient adapter for explicit document relationships only; it does not serve curation or the Knowledge Assistant
 - LangGraph = HITL curation only
 - Knowledge Assistant = read-only

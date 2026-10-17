@@ -22,8 +22,6 @@ class Settings(BaseSettings):
     azure_openai_endpoint: str | None = None
     azure_openai_api_key: SecretStr | None = None
     azure_openai_model: str | None = None
-    openai_api_key: SecretStr | None = None
-    openai_model: str | None = None
     langgraph_checkpoint_db: str = "data/langgraph_checkpoints.db"
     upload_directory: str = "data/uploads"
     max_upload_size_mb: int = 10
@@ -44,8 +42,8 @@ class Settings(BaseSettings):
     @field_validator("ai_provider")
     @classmethod
     def ai_provider_must_be_supported(cls, value: str) -> str:
-        if value not in {"tabnine_cli", "azure_openai", "openai", "local_rules"}:
-            raise ValueError("ai_provider must be tabnine_cli, azure_openai, openai, or local_rules")
+        if value not in {"tabnine_cli", "azure_openai", "local_rules"}:
+            raise ValueError("ai_provider must be tabnine_cli, azure_openai, or local_rules")
         return value
 
     @field_validator(
