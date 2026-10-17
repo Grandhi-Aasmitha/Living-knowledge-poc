@@ -247,9 +247,12 @@ export default function App() {
 
       if (!response.ok) {
         if (response.status === 503) {
-          setIngestionMessage('Document ingestion is unavailable until AI is configured.');
+          setIngestionMessage('Document ingestion is unavailable. Configure an AI provider or local rules mode.');
         } else if (response.status === 413) {
           setIngestionMessage('The selected file exceeds the upload size limit.');
+        } else if (response.status === 422) {
+          const error = await response.json() as { detail?: unknown };
+          setIngestionMessage(typeof error.detail === 'string' ? error.detail : 'The document could not be processed.');
         } else {
           setIngestionMessage('Document ingestion failed.');
         }
@@ -297,6 +300,7 @@ export default function App() {
         <p className="eyebrow">Grow team knowledge</p>
         <h2 id="ingestion-title">Learn from a document</h2>
         <p className="muted">Add a PDF, DOCX, PPTX, TXT, or Markdown document. The system connects mentions to known entities, remembers alternate names, and adds supported relationships.</p>
+        <p className="muted">Local rules mode works without AI for explicit facts such as “Billing Service calls Inventory API.” or “Billing Service | CALLS | Inventory API”. Free-form descriptions still need an AI provider.</p>
 
         {ingestionMessage !== '' && <p className="message" role="status">{ingestionMessage}</p>}
 

@@ -38,6 +38,10 @@ FILE_UPLOAD_SOURCE_ID = "source:file-upload"
 logger = logging.getLogger(__name__)
 
 
+class NoExplicitRelationshipsError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class IngestionResult:
     document_id: str
@@ -86,6 +90,7 @@ class FileIngestionService:
         entity_resolution_auto_match_threshold: float = 0.9,
         entity_resolution_max_candidates: int = 5,
         learning_repository: LearningRepository | None = None,
+        require_explicit_relationships: bool = False,
     ) -> None:
         self._storage = DocumentStorage(upload_directory, max_upload_size_mb)
         self._chunker = DocumentChunker(max_chunk_chars, max_chunks_per_document)
@@ -101,6 +106,7 @@ class FileIngestionService:
         self._entity_repository = entity_repository
         self._claim_repository = claim_repository
         self._learning_repository = learning_repository
+        self._require_explicit_relationships = require_explicit_relationships
         self._document_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     async def ingest(self, content: bytes, original_filename: str, namespace: str = "tstvs", force: bool = False) -> IngestionResult:
@@ -199,6 +205,12 @@ class FileIngestionService:
                 len(extracted.unresolved_terms),
             )
             extracted_by_chunk.append((chunk, extracted))
+
+        if self._require_explicit_relationships and not any(knowledge.claims for _, knowledge in extracted_by_chunk):
+            raise NoExplicitRelationshipsError(
+                "No explicit relationships found. Use lines such as 'Billing Service calls Inventory API.' "
+                "or 'Billing Service | CALLS | Inventory API'."
+            )
 
         now = datetime.now(UTC)
         source = await self._source_repository.create(

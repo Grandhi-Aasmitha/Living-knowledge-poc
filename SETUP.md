@@ -61,7 +61,7 @@ FRONTEND_ORIGIN=http://localhost:5173
 
 Keep the remaining template settings unless you need to customize them. `.env` is ignored by Git; never commit credentials. The backend reads this root file regardless of the terminal's working directory. Environment variables already exported in the shell take precedence, so check them if settings seem unexpected.
 
-### Choose one AI provider
+### Choose a document extraction mode
 
 **Option A — Tabnine CLI (default)**
 
@@ -94,7 +94,20 @@ AZURE_OPENAI_MODEL=<your-deployment-name>
 
 Use a deployment that supports the application's structured JSON responses. Setting Azure credentials without changing `AI_PROVIDER` will still select Tabnine.
 
-**Without a working AI provider:** the backend can start and serve health checks and existing knowledge. If provider initialization fails, upload, assistant, and AI-backed curation endpoints return HTTP 503. If initialization succeeds but authentication or inference later fails, the request reports a provider error instead. Saved identity decisions can still be reviewed and applied when Neo4j is available. Restart the backend after changing provider settings.
+**Option C — Local rules (no AI credentials)**
+
+Set `AI_PROVIDER=local_rules` in the root `.env`. Uploads then recognize explicit relationships in any supported text-bearing document format. Use one fact per sentence or pipe-separated line, for example:
+
+```text
+Billing Service calls Inventory API.
+Billing Service | DEPENDS_ON | Orders Database
+```
+
+Names should be capitalized. A suffix such as `Service`, `Team`, `API`, or `Database` determines the entity type; other names become business concepts. The local rules only extract directly stated facts with supported verbs or ontology predicates. They do not infer facts from free-form prose. If no explicit relationship is found, the upload returns a helpful validation error instead of claiming the document was learned. Similar existing names are sent to **Questions for the team** for human review. Claims from uploads remain proposed and retain the exact source excerpt as evidence. Local rules support uploads only; Knowledge Assistant and AI-backed curation remain unavailable.
+
+To try this mode without writing a document, upload `examples/local-rules-demo.md` using namespace `local-demo`, then select `local-demo` in Graph Explorer. The graph appears only after you upload the file.
+
+**Without a working provider or local rules:** the backend can start and serve health checks and existing knowledge, but upload, assistant, and AI-backed curation endpoints return HTTP 503. If an AI provider initializes but authentication or inference later fails, the request reports a provider error instead. Restart the backend after changing provider settings.
 
 ## 3. Start Neo4j
 
@@ -188,7 +201,7 @@ Restart Vite after changing that file. If you change the UI address or port, upd
 3. Read the learning report for new entities, recognized names, learned aliases, and unresolved terms.
 4. In **Questions for the team**, choose the correct existing entity or create a separate entity, explain the decision, and apply it. The decision persists in Neo4j and applies supported relationships that were waiting for that identity.
 5. Use **Recorded decisions** to inspect the remembered reason and original evidence. The graph refreshes after a decision or successful upload.
-6. Ask the **Knowledge Assistant** a question about the uploaded material using the same namespace. Inspect its supporting evidence and proposed/confirmed status; it should not invent missing knowledge.
+6. With Tabnine or Azure OpenAI configured, ask the **Knowledge Assistant** a question about the uploaded material using the same namespace. Inspect its supporting evidence and proposed/confirmed status; it should not invent missing knowledge. The assistant is unavailable in local rules mode.
 
 Use the same filename and namespace when replacing a document. A successful replacement preserves history and makes the new version's evidence current. Identical uploads normally skip extraction; select **Reprocess even if unchanged** to analyze an earlier upload with the current learning policy. Existing duplicate nodes are not automatically merged.
 

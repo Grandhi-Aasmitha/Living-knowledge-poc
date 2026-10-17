@@ -2,6 +2,7 @@ from pydantic import SecretStr, ValidationError
 import pytest
 
 from app.ai.client import AIProviderError
+from app.ai.local_rules_client import LocalRulesClient
 from app.ai.provider import build_structured_ai_client
 from app.ai.pydantic_ai_client import PydanticAIClient
 from app.ai.tabnine_cli_client import TabnineCliClient
@@ -27,6 +28,10 @@ def test_tabnine_provider_builds_tabnine_client(monkeypatch) -> None:
 
     assert isinstance(client, TabnineCliClient)
     assert client._cli_path == "C:/fake/tabnine.exe"
+
+
+def test_local_rules_provider_needs_no_ai_credentials() -> None:
+    assert isinstance(build_structured_ai_client(settings(ai_provider="local_rules")), LocalRulesClient)
 
 
 def test_azure_provider_builds_pydantic_ai_client() -> None:

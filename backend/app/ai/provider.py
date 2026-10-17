@@ -2,6 +2,7 @@ from pathlib import Path
 from shutil import which
 
 from app.ai.client import AIProviderError, StructuredAIClient
+from app.ai.local_rules_client import LocalRulesClient
 from app.ai.model import build_ai_model
 from app.ai.pydantic_ai_client import PydanticAIClient
 from app.ai.tabnine_cli_client import TabnineCliClient
@@ -9,6 +10,9 @@ from app.config import Settings
 
 
 def build_structured_ai_client(settings: Settings) -> StructuredAIClient:
+    if settings.ai_provider == "local_rules":
+        return LocalRulesClient()
+
     if settings.ai_provider == "tabnine_cli":
         resolved_cli_path = _resolve_executable(settings.tabnine_cli_path)
         if resolved_cli_path is None:

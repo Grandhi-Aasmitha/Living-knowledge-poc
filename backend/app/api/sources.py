@@ -9,6 +9,7 @@ from app.ai.client import AIProviderError
 from app.documents.chunker import ChunkLimitExceededError
 from app.documents.parsers import DocumentParseError, NoExtractableTextError, UnsupportedDocumentTypeError
 from app.documents.storage import UploadTooLargeError
+from app.services.file_ingestion_service import NoExplicitRelationshipsError
 
 
 router = APIRouter(prefix="/api/sources/files", tags=["sources"])
@@ -77,6 +78,8 @@ async def upload_file(
         raise HTTPException(status_code=413, detail=str(error)) from error
     except (DocumentParseError, NoExtractableTextError, ChunkLimitExceededError) as error:
         logger.info("Upload rejected unprocessable namespace=%s reason=%s", namespace, str(error))
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except NoExplicitRelationshipsError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except AIProviderError as error:
         logger.warning("Upload failed during AI extraction namespace=%s provider_error=%s", namespace, str(error))

@@ -24,7 +24,7 @@ For current macOS/Linux and Windows startup instructions, AI provider configurat
 - Python 3.13
 - Node.js and npm
 - Podman and Podman Compose
-- Authenticated Tabnine CLI (default) or Azure OpenAI configuration for AI-backed features; see [SETUP.md](SETUP.md)
+- Authenticated Tabnine CLI (default) or Azure OpenAI for AI-backed features. Explicit document relationships can also be ingested offline with `AI_PROVIDER=local_rules`; see [SETUP.md](SETUP.md).
 - On this machine, Podman may be run from WSL; use the same commands from the WSL shell if Podman is not available in PowerShell.
 
 ## Environment setup
@@ -49,7 +49,7 @@ ENTITY_RESOLUTION_AUTO_MATCH_THRESHOLD=0.9
 ENTITY_RESOLUTION_MAX_CANDIDATES=5
 ```
 
-Leave Azure values empty when using Tabnine or when you only need existing knowledge and automated tests. If the selected AI provider cannot initialize, the backend still starts but AI-backed endpoints return HTTP 503. See [SETUP.md](SETUP.md) for both provider options.
+Leave Azure values empty when using Tabnine, local rules, or when you only need existing knowledge and automated tests. Set `AI_PROVIDER=local_rules` to upload explicit relationships without AI credentials; assistant and AI-backed curation remain unavailable in this mode. If the selected AI provider cannot initialize, the backend still starts but AI-backed endpoints return HTTP 503. See [SETUP.md](SETUP.md) for all modes.
 
 The canonical `.env` location is the repository root. The backend resolves this file with `pathlib.Path`, so settings do not depend on the shell current working directory.
 

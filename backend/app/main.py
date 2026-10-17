@@ -69,28 +69,30 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     try:
         ai_client = build_structured_ai_client(settings)
-        checkpoint_path = REPOSITORY_ROOT / settings.langgraph_checkpoint_db
-        checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        checkpointer_context = AsyncSqliteSaver.from_conn_string(str(checkpoint_path))
-        checkpointer = await checkpointer_context.__aenter__()
-        checkpointer.serde = JsonPlusSerializer(pickle_fallback=False, allowed_msgpack_modules=None)
-        await checkpointer.setup()
-        app.state.langgraph_checkpointer_context = checkpointer_context
+        if settings.ai_provider != "local_rules":
+            checkpoint_path = REPOSITORY_ROOT / settings.langgraph_checkpoint_db
+            checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+            checkpointer_context = AsyncSqliteSaver.from_conn_string(str(checkpoint_path))
+            checkpointer = await checkpointer_context.__aenter__()
+            checkpointer.serde = JsonPlusSerializer(pickle_fallback=False, allowed_msgpack_modules=None)
+            await checkpointer.setup()
+            app.state.langgraph_checkpointer_context = checkpointer_context
         entity_repository = EntityRepository(app.state.neo4j)
         claim_repository = ClaimRepository(app.state.neo4j)
         source_repository = SourceRepository(app.state.neo4j)
         gap_repository = GapRepository(app.state.neo4j)
-        app.state.curation_workflow = CurationWorkflow(
-            entity_repository=entity_repository,
-            claim_repository=claim_repository,
-            source_repository=source_repository,
-            gap_repository=gap_repository,
-            question_generator=QuestionGenerator(ai_client),
-            answer_interpreter=AnswerInterpreter(ai_client),
-            checkpointer=checkpointer,
-            entity_resolver=EntityResolver(ai_client, entity_repository, settings.entity_resolution_auto_match_threshold, settings.entity_resolution_max_candidates),
-            learning_repository=LearningRepository(app.state.neo4j),
-        )
+        if settings.ai_provider != "local_rules":
+            app.state.curation_workflow = CurationWorkflow(
+                entity_repository=entity_repository,
+                claim_repository=claim_repository,
+                source_repository=source_repository,
+                gap_repository=gap_repository,
+                question_generator=QuestionGenerator(ai_client),
+                answer_interpreter=AnswerInterpreter(ai_client),
+                checkpointer=checkpointer,
+                entity_resolver=EntityResolver(ai_client, entity_repository, settings.entity_resolution_auto_match_threshold, settings.entity_resolution_max_candidates),
+                learning_repository=LearningRepository(app.state.neo4j),
+            )
         app.state.file_ingestion_service = FileIngestionService(
             ai_client=ai_client,
             source_repository=source_repository,
@@ -104,19 +106,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             entity_resolution_auto_match_threshold=settings.entity_resolution_auto_match_threshold,
             entity_resolution_max_candidates=settings.entity_resolution_max_candidates,
             learning_repository=LearningRepository(app.state.neo4j),
+            require_explicit_relationships=settings.ai_provider == "local_rules",
         )
-        app.state.knowledge_assistant_service = KnowledgeAssistantService(
-            query_planner=QueryPlanner(ai_client),
-            repository=KnowledgeQueryRepository(app.state.neo4j),
-            answer_generator=AnswerGenerator(ai_client),
-            max_claims=settings.assistant_max_claims,
-            max_evidence_per_claim=settings.assistant_max_evidence_per_claim,
-            max_evidence_chars=settings.assistant_max_evidence_chars,
-            max_context_chars=settings.assistant_max_context_chars,
-        )
-        app.state.curation_unavailable_reason = None
+        if settings.ai_provider != "local_rules":
+            app.state.knowledge_assistant_service = KnowledgeAssistantService(
+                query_planner=QueryPlanner(ai_client),
+                repository=KnowledgeQueryRepository(app.state.neo4j),
+                answer_generator=AnswerGenerator(ai_client),
+                max_claims=settings.assistant_max_claims,
+                max_evidence_per_claim=settings.assistant_max_evidence_per_claim,
+                max_evidence_chars=settings.assistant_max_evidence_chars,
+                max_context_chars=settings.assistant_max_context_chars,
+            )
+            app.state.curation_unavailable_reason = None
+            app.state.knowledge_assistant_unavailable_reason = None
+        else:
+            app.state.curation_unavailable_reason = "Local rules support document uploads only"
+            app.state.knowledge_assistant_unavailable_reason = "Local rules support document uploads only"
         app.state.file_ingestion_unavailable_reason = None
-        app.state.knowledge_assistant_unavailable_reason = None
     except AIProviderError as error:
         app.state.curation_unavailable_reason = str(error)
         app.state.file_ingestion_unavailable_reason = str(error)

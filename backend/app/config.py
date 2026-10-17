@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     @field_validator("ai_provider")
     @classmethod
     def ai_provider_must_be_supported(cls, value: str) -> str:
-        if value not in {"tabnine_cli", "azure_openai"}:
-            raise ValueError("ai_provider must be tabnine_cli or azure_openai")
+        if value not in {"tabnine_cli", "azure_openai", "local_rules"}:
+            raise ValueError("ai_provider must be tabnine_cli, azure_openai, or local_rules")
         return value
 
     @field_validator(
