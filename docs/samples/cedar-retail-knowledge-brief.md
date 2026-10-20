@@ -1,6 +1,6 @@
 # Cedar Retail Platform Knowledge Brief
 
-This brief records how Cedar Retail handles purchases, shipments, receipts, risk alerts, and returns. Two current records give different operating teams for the Returns service. Several parts of the flow are still undocumented, so those details remain open for the teams to clarify.
+These operational notes combine service runbooks and team registers from Cedar Retail. The final two records disagree about the operating team for one service; the teams have not yet settled that assignment.
 
 ## Checkout and pricing
 

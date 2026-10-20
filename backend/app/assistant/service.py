@@ -1,3 +1,5 @@
+import re
+
 from app.ai.client import AIProviderError
 from app.assistant.answer_generator import AnswerGenerator
 from app.assistant.models import (
@@ -17,6 +19,31 @@ from app.repositories.knowledge_query_repository import KnowledgeQueryRepository
 
 class AssistantValidationError(ValueError):
     pass
+
+
+_SERVICE_QUESTION = re.compile(r"\b(?:which|what)\s+service\b", re.IGNORECASE)
+_SERVICE_SEARCH_STOP_WORDS = {
+    "a", "an", "and", "are", "by", "does", "do", "for", "from", "handle", "handles",
+    "handling", "in", "is", "of", "on", "service", "services", "the", "to", "what",
+    "which", "with",
+}
+
+
+def _service_search_keywords(question: str) -> list[str]:
+    if not _SERVICE_QUESTION.search(question):
+        return []
+    words = re.findall(r"[a-zA-Z][a-zA-Z0-9]*", question.casefold())
+    keywords: list[str] = []
+    for word in words:
+        if word in _SERVICE_SEARCH_STOP_WORDS or len(word) < 4:
+            continue
+        if word.endswith("ies") and len(word) > 5:
+            word = word[:-3] + "y"
+        elif word.endswith("s") and not word.endswith("ss") and len(word) > 5:
+            word = word[:-1]
+        if word not in keywords:
+            keywords.append(word)
+    return keywords[:3]
 
 
 class KnowledgeAssistantService:
@@ -49,8 +76,9 @@ class KnowledgeAssistantService:
         resolutions = await self._repository.resolve_entities(plan.entity_names, namespace)
         missing = [resolution.requested_name for resolution in resolutions if not resolution.matches]
         ambiguous = [resolution for resolution in resolutions if len(resolution.matches) > 1]
+        service_keywords = _service_search_keywords(cleaned_question)
 
-        if missing:
+        if missing and not service_keywords:
             return self._insufficient_response(
                 question=cleaned_question,
                 answer=f"I couldn't find {', '.join(missing)} in the current knowledge base.",
@@ -65,16 +93,46 @@ class KnowledgeAssistantService:
                 matched_entities=[match for resolution in resolutions for match in resolution.matches],
             )
 
-        matched_entities = [resolution.matches[0] for resolution in resolutions]
+        matched_entities = [resolution.matches[0] for resolution in resolutions if resolution.matches]
         entity_ids = [entity.id for entity in matched_entities]
-        claims = await self._repository.get_claim_context(
-            entity_ids=entity_ids,
-            predicates=plan.predicates,
-            direction=plan.direction,
-            namespace=namespace,
-            max_claims=self._max_claims,
-            max_evidence_per_claim=self._max_evidence_per_claim,
+        claims = (
+            await self._repository.get_claim_context(
+                entity_ids=entity_ids,
+                predicates=plan.predicates,
+                direction=plan.direction,
+                namespace=namespace,
+                max_claims=self._max_claims,
+                max_evidence_per_claim=self._max_evidence_per_claim,
+            )
+            if not missing else []
         )
+        if service_keywords and not any(claim.subject_type == "SERVICE" for claim in claims):
+            candidate_ids = await self._repository.search_service_claim_ids(service_keywords, namespace, self._max_claims)
+            if candidate_ids:
+                claims = await self._repository.get_claim_context(
+                    entity_ids=[],
+                    predicates=[],
+                    direction=QueryDirection.BOTH,
+                    namespace=namespace,
+                    max_claims=self._max_claims,
+                    max_evidence_per_claim=self._max_evidence_per_claim,
+                    candidate_claim_ids=candidate_ids,
+                )
+                matched_entities = list({
+                    claim.subject_entity_id: MatchedEntity(
+                        id=claim.subject_entity_id,
+                        label=claim.subject_name,
+                        entity_type=claim.subject_type,
+                        namespace=namespace,
+                    ) for claim in claims
+                }.values())
+                entity_ids = [entity.id for entity in matched_entities]
+        if missing and not claims:
+            return self._insufficient_response(
+                question=cleaned_question,
+                answer=f"I couldn't find {', '.join(missing)} in the current knowledge base.",
+                matched_entities=matched_entities,
+            )
         open_gaps = await self._repository.get_open_gaps(entity_ids)
         open_conflicts = await self._repository.get_open_conflicts([claim.claim_id for claim in claims])
         full_context = KnowledgeContext(

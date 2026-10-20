@@ -59,12 +59,14 @@ class KnowledgeQueryRepository:
         namespace: str,
         max_claims: int,
         max_evidence_per_claim: int,
+        candidate_claim_ids: list[str] | None = None,
     ) -> list[RetrievedClaim]:
         async with self._client.session() as session:
             result = await session.run(
                 """
                 MATCH (claim:Claim)-[:SUBJECT]->(subject:Entity {namespace: $namespace, status: 'ACTIVE'})
                 WHERE claim.status IN $claim_statuses
+                  AND ($candidate_claim_ids IS NULL OR claim.id IN $candidate_claim_ids)
                   AND ($predicate_count = 0 OR claim.predicate IN $predicates)
                   AND (claim.valid_from IS NULL OR datetime(claim.valid_from) <= datetime())
                   AND (claim.valid_to IS NULL OR datetime(claim.valid_to) > datetime())
@@ -72,7 +74,8 @@ class KnowledgeQueryRepository:
                 OPTIONAL MATCH (claim)-[:OBJECT]->(object:Entity)
                 WITH claim, subject, object
                 WHERE (
-                    ($direction = 'OUTGOING' AND subject.id IN $entity_ids)
+                    $candidate_claim_ids IS NOT NULL
+                    OR ($direction = 'OUTGOING' AND subject.id IN $entity_ids)
                     OR ($direction = 'INCOMING' AND object IS NOT NULL AND object.id IN $entity_ids)
                     OR ($direction = 'BOTH' AND (subject.id IN $entity_ids OR (object IS NOT NULL AND object.id IN $entity_ids)))
                   )
@@ -102,10 +105,42 @@ class KnowledgeQueryRepository:
                 claim_statuses=COUNTED_CLAIM_STATUSES,
                 max_claims=max_claims,
                 max_evidence_per_claim=max_evidence_per_claim,
+                candidate_claim_ids=candidate_claim_ids,
             )
             records = await result.data()
 
         return [self._claim_from_record(record) for record in records]
+
+    async def search_service_claim_ids(self, keywords: list[str], namespace: str, max_claims: int) -> list[str]:
+        if not keywords:
+            return []
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (claim:Claim)-[:SUBJECT]->(subject:Entity {namespace: $namespace, status: 'ACTIVE', entity_type: 'SERVICE'})
+                WHERE claim.status IN $claim_statuses
+                  AND (claim.valid_from IS NULL OR datetime(claim.valid_from) <= datetime())
+                  AND (claim.valid_to IS NULL OR datetime(claim.valid_to) > datetime())
+                OPTIONAL MATCH (claim)-[:OBJECT]->(object:Entity)
+                WITH claim, subject, object
+                WHERE object IS NULL OR (object.namespace = $namespace AND object.status = 'ACTIVE')
+                MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)
+                WHERE coalesce(evidence.is_current, true)
+                  AND any(keyword IN $keywords WHERE
+                      toLower(coalesce(evidence.excerpt, '')) CONTAINS keyword
+                      OR toLower(subject.canonical_name) CONTAINS keyword
+                      OR toLower(coalesce(object.canonical_name, '')) CONTAINS keyword)
+                RETURN claim.id AS claim_id, count(DISTINCT evidence) AS evidence_count
+                ORDER BY evidence_count DESC, claim_id
+                LIMIT $max_claims
+                """,
+                namespace=namespace,
+                claim_statuses=COUNTED_CLAIM_STATUSES,
+                keywords=keywords,
+                max_claims=max_claims,
+            )
+            records = await result.data()
+        return [record["claim_id"] for record in records]
 
     async def get_open_gaps(self, entity_ids: list[str]) -> list[OpenGapContext]:
         if not entity_ids:

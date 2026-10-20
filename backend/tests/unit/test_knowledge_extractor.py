@@ -63,3 +63,31 @@ def test_knowledge_extractor_passes_chunk_context_and_returns_model() -> None:
     assert "test" in client.prompt
     assert "PUBLISHES_TO" in client.prompt
     assert "The Ingestion Service publishes to the Transformed Price Topic." in client.prompt
+
+
+def test_knowledge_extractor_drops_malformed_ownership_claims() -> None:
+    class OwnershipClient:
+        async def generate_structured(self, prompt: str, response_model: type[T]) -> T:
+            return response_model.model_validate({
+                "entities": [
+                    {"temporary_id": "team", "entity_type": "TEAM", "name": "Cedar Support Team"},
+                    {"temporary_id": "service", "entity_type": "SERVICE", "name": "Cedar Returns Service"},
+                    {"temporary_id": "record", "entity_type": "DOCUMENT", "name": "Logistics ownership record"},
+                ],
+                "claims": [
+                    {"subject": "team", "predicate": "OWNS", "object_entity": "service", "confidence": 0.9, "evidence_text": "Cedar Support Team operates Cedar Returns Service."},
+                    {"subject": "record", "predicate": "OWNS", "object_entity": "service", "confidence": 0.5, "evidence_text": "The record assigns Cedar Returns Service."},
+                    {"subject": "service", "predicate": "OWNS", "object_entity": "team", "confidence": 0.5, "evidence_text": "Cedar Support Team operates Cedar Returns Service."},
+                ],
+            })
+
+    chunk = SourceChunk(
+        id="chunk-ownership", version_id="version-ownership", sequence=1,
+        heading_path=["Ownership"], content="Cedar Support Team operates Cedar Returns Service.",
+        locator=None, content_hash="hash",
+    )
+    result = run(KnowledgeExtractor(OwnershipClient()).extract(chunk, namespace="test"))
+
+    assert len(result.claims) == 1
+    assert result.claims[0].subject == "team"
+    assert result.claims[0].object_entity == "service"

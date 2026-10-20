@@ -14,7 +14,7 @@ from app.assistant.models import (
     RetrievedClaim,
     RetrievedEvidence,
 )
-from app.assistant.service import KnowledgeAssistantService
+from app.assistant.service import KnowledgeAssistantService, _service_search_keywords
 from app.domain.enums import ClaimStatus, GapPriority
 
 
@@ -27,10 +27,12 @@ class FakePlanner:
 
 
 class FakeRepository:
-    def __init__(self, claims: list[RetrievedClaim], gaps: list[OpenGapContext] | None = None, conflicts: list[OpenConflictContext] | None = None) -> None:
+    def __init__(self, claims: list[RetrievedClaim], gaps: list[OpenGapContext] | None = None, conflicts: list[OpenConflictContext] | None = None, candidate_claims: list[RetrievedClaim] | None = None) -> None:
         self.claims = claims
         self.gaps = gaps or []
         self.conflicts = conflicts or []
+        self.candidate_claims = candidate_claims or []
+        self.search_keywords: list[str] = []
 
     async def resolve_entities(self, names: list[str], namespace: str) -> list[EntityResolution]:
         return [
@@ -42,7 +44,13 @@ class FakeRepository:
         ]
 
     async def get_claim_context(self, **kwargs) -> list[RetrievedClaim]:
+        if kwargs.get("candidate_claim_ids") is not None:
+            return self.candidate_claims
         return self.claims
+
+    async def search_service_claim_ids(self, keywords: list[str], namespace: str, max_claims: int) -> list[str]:
+        self.search_keywords = keywords
+        return [claim.claim_id for claim in self.candidate_claims]
 
     async def get_open_gaps(self, entity_ids: list[str]) -> list[OpenGapContext]:
         return self.gaps
@@ -55,9 +63,11 @@ class FakeGenerator:
     def __init__(self, draft: AnswerDraft) -> None:
         self.draft = draft
         self.calls = 0
+        self.context = None
 
     async def generate(self, question: str, context) -> AnswerDraft:
         self.calls += 1
+        self.context = context
         return self.draft
 
 
@@ -168,3 +178,48 @@ def test_evidence_must_support_cited_claim() -> None:
 
     with pytest.raises(AIProviderError):
         run(service(FakeRepository(claims), generator).ask("Who owns Scheduler Service?", "tstvs"))
+
+
+def test_service_question_uses_service_evidence_instead_of_document_intro() -> None:
+    intro = RetrievedClaim(
+        claim_id="claim:intro", subject_entity_id="entity:document", subject_name="Cedar Brief",
+        subject_type="DOCUMENT", predicate="PURPOSE", object_entity_id="entity:shipments",
+        object_name="shipments", claim_status=ClaimStatus.PROPOSED, confidence=0.9,
+        evidence=[RetrievedEvidence(evidence_id="evidence:intro", source_id="source:file", source_type="FILE_UPLOAD", source_title="Cedar Brief", excerpt="The brief records shipments.")],
+    )
+    fulfillment = RetrievedClaim(
+        claim_id="claim:fulfillment", subject_entity_id="entity:fulfillment",
+        subject_name="Cedar Fulfillment Service", subject_type="SERVICE", predicate="WRITES_TO",
+        object_entity_id="entity:shipment-db", object_name="Cedar Shipment Database",
+        claim_status=ClaimStatus.PROPOSED, confidence=0.97,
+        evidence=[RetrievedEvidence(evidence_id="evidence:fulfillment", source_id="source:file", source_type="FILE_UPLOAD", source_title="Cedar Brief", excerpt="It saves the allocated shipment details in Cedar Shipment Database.")],
+    )
+    repository = FakeRepository([intro], candidate_claims=[fulfillment])
+    generator = FakeGenerator(AnswerDraft(
+        answer="Cedar Fulfillment Service handles shipments.", insufficient_knowledge=False,
+        cited_claim_ids=["claim:fulfillment"], cited_evidence_ids=["evidence:fulfillment"],
+    ))
+    assistant = service(repository, generator)
+    assistant._query_planner = FakePlanner(KnowledgeQueryPlan(entity_names=["shipments"], predicates=[], direction=QueryDirection.BOTH))
+
+    response = run(assistant.ask("Which service handles shipments?", "cedar-retail-lab"))
+
+    assert repository.search_keywords == ["shipment"]
+    assert [claim.claim_id for claim in generator.context.claims] == ["claim:fulfillment"]
+    assert response.answer == "Cedar Fulfillment Service handles shipments."
+    assert response.knowledge_status == "PROPOSED"
+
+
+def test_answer_draft_removes_internal_wrapping_from_answer() -> None:
+    draft = AnswerDraft(
+        answer="AnswerDraft: Cedar Fulfillment Service handles shipments. [Claim: claim:one; Evidence: evidence:one]",
+        insufficient_knowledge=False,
+        cited_claim_ids=["claim:one"], cited_evidence_ids=["evidence:one"],
+    )
+
+    assert draft.answer == "Cedar Fulfillment Service handles shipments."
+
+
+def test_service_search_stays_scoped_to_service_questions() -> None:
+    assert _service_search_keywords("Which service handles shipments?") == ["shipment"]
+    assert _service_search_keywords("Who owns Cedar Returns Service?") == []

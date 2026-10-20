@@ -1,4 +1,5 @@
 from enum import StrEnum
+import re
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -119,7 +120,8 @@ class AnswerDraft(BaseModel):
     @field_validator("answer")
     @classmethod
     def answer_must_not_be_blank(cls, value: str) -> str:
-        cleaned = value.strip()
+        cleaned = re.sub(r"^AnswerDraft\s*:\s*", "", value.strip(), flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*\[(?:Claims?|Evidence)\s*:[^\]]*\]\s*$", "", cleaned, flags=re.IGNORECASE).strip()
         if not cleaned:
             raise ValueError("answer must not be blank")
         return cleaned

@@ -165,3 +165,28 @@ def test_namespace_isolation_and_open_gap_conflict_context() -> None:
         assert [item.id for item in conflicts] == ["test:assistantrepo:conflict:one"]
 
     run_with_client(body)
+
+
+def test_service_evidence_search_is_bounded_to_current_namespace_claims() -> None:
+    async def body(client: Neo4jClient) -> None:
+        await create_base(client)
+        await create_claim(client, "test:assistantrepo:claim:shipment", "test:assistantrepo:service", "WRITES_TO", "test:assistantrepo:database", ClaimStatus.PROPOSED)
+        await create_claim(client, "test:assistantrepo:claim:rejected", "test:assistantrepo:service", "CALLS", "test:assistantrepo:database", ClaimStatus.REJECTED)
+        await create_claim(client, "test:assistantrepo:claim:stale", "test:assistantrepo:service", "USES", "test:assistantrepo:database", ClaimStatus.CONFIRMED)
+        await create_claim(client, "test:assistantrepo:claim:other", "test:assistantrepo:other", "PURPOSE", None, ClaimStatus.PROPOSED, object_value="Shipment details")
+        async with client.session() as session:
+            await session.run(
+                "MATCH (e:Evidence) WHERE e.id STARTS WITH 'test:assistantrepo:evidence:' SET e.excerpt = 'Stores shipment details.'"
+            )
+            await session.run(
+                "MATCH (e:Evidence {id: 'test:assistantrepo:evidence:stale'}) SET e.is_current = false"
+            )
+
+        repository = KnowledgeQueryRepository(client)
+        ids = await repository.search_service_claim_ids(["shipment"], NAMESPACE, 25)
+        claims = await repository.get_claim_context([], [], QueryDirection.BOTH, NAMESPACE, 25, 2, ids)
+
+        assert ids == ["test:assistantrepo:claim:shipment"]
+        assert [claim.claim_id for claim in claims] == ids
+
+    run_with_client(body)

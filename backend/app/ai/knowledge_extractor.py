@@ -11,7 +11,16 @@ class KnowledgeExtractor:
 
     async def extract(self, chunk: SourceChunk, namespace: str) -> ExtractedKnowledge:
         prompt = self._build_prompt(chunk, namespace)
-        return await self._ai_client.generate_structured(prompt, ExtractedKnowledge)
+        knowledge = await self._ai_client.generate_structured(prompt, ExtractedKnowledge)
+        entities = {entity.temporary_id: entity for entity in knowledge.entities}
+        safe_claims = [
+            claim for claim in knowledge.claims
+            if claim.predicate != "OWNS" or (
+                entities[claim.subject].entity_type == "TEAM"
+                and claim.object_entity is not None
+            )
+        ]
+        return knowledge.model_copy(update={"claims": safe_claims})
 
     def _build_prompt(self, chunk: SourceChunk, namespace: str) -> str:
         heading = " > ".join(chunk.heading_path) if chunk.heading_path else "(none)"
