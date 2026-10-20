@@ -5,7 +5,7 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.domain.enums import ClaimStatus, GapPriority
-from app.domain.ontology import validate_predicate
+from app.domain.ontology import validate_entity_type, validate_predicate
 
 
 class QueryDirection(StrEnum):
@@ -22,9 +22,11 @@ class KnowledgeStatus(StrEnum):
 
 
 class KnowledgeQueryPlan(BaseModel):
-    entity_names: list[str] = Field(min_length=1, max_length=3)
+    entity_names: list[str] = Field(default_factory=list, max_length=3)
     predicates: list[str] = Field(default_factory=list, max_length=10)
     direction: QueryDirection = QueryDirection.BOTH
+    search_terms: list[str] = Field(default_factory=list, max_length=5)
+    answer_entity_types: list[str] = Field(default_factory=list, max_length=3)
 
     @field_validator("entity_names")
     @classmethod
@@ -47,6 +49,21 @@ class KnowledgeQueryPlan(BaseModel):
         if len(set(cleaned)) != len(cleaned):
             raise ValueError("predicates must be unique")
         return cleaned
+
+    @field_validator("search_terms")
+    @classmethod
+    def search_terms_must_be_meaningful(cls, values: list[str]) -> list[str]:
+        cleaned = [value.strip().casefold() for value in values]
+        if any(not value or len(value) > 80 for value in cleaned):
+            raise ValueError("search_terms must be nonblank and at most 80 characters")
+        return list(dict.fromkeys(cleaned))
+
+    @field_validator("answer_entity_types")
+    @classmethod
+    def answer_entity_types_must_be_controlled(cls, values: list[str]) -> list[str]:
+        for value in values:
+            validate_entity_type(value)
+        return list(dict.fromkeys(values))
 
 
 class MatchedEntity(BaseModel):

@@ -21,29 +21,46 @@ class AssistantValidationError(ValueError):
     pass
 
 
-_SERVICE_QUESTION = re.compile(r"\b(?:which|what)\s+service\b", re.IGNORECASE)
-_SERVICE_SEARCH_STOP_WORDS = {
-    "a", "an", "and", "are", "by", "does", "do", "for", "from", "handle", "handles",
-    "handling", "in", "is", "of", "on", "service", "services", "the", "to", "what",
-    "which", "with",
+_SEARCH_STOP_WORDS = {
+    "a", "about", "an", "and", "are", "by", "can", "did", "do", "does", "for", "from",
+    "how", "in", "is", "it", "of", "on", "or", "the", "to", "what", "when", "where",
+    "which", "who", "why", "with", "handles", "handle", "operates", "operate", "owns",
+    "own", "uses", "use", "tell", "me", "team", "service", "system",
+    "database", "topic", "api", "document", "table", "column", "flow", "scheduler",
 }
 
 
-def _service_search_keywords(question: str) -> list[str]:
-    if not _SERVICE_QUESTION.search(question):
-        return []
+def _search_terms(question: str, planned_terms: list[str]) -> list[str]:
+    if planned_terms:
+        variants: list[str] = []
+        for phrase in planned_terms:
+            normalized = phrase.casefold().strip()
+            words = re.findall(r"[a-zA-Z][a-zA-Z0-9]*", normalized)
+            if not words or all(word in _SEARCH_STOP_WORDS for word in words):
+                continue
+            singular = re.sub(r"\b[a-z]{4,}\b", lambda match: _singular_word(match.group()), normalized)
+            for value in (normalized, singular):
+                if value not in variants:
+                    variants.append(value)
+        if variants:
+            return variants[:10]
     words = re.findall(r"[a-zA-Z][a-zA-Z0-9]*", question.casefold())
-    keywords: list[str] = []
+    terms: list[str] = []
     for word in words:
-        if word in _SERVICE_SEARCH_STOP_WORDS or len(word) < 4:
+        if word in _SEARCH_STOP_WORDS or len(word) < 4:
             continue
-        if word.endswith("ies") and len(word) > 5:
-            word = word[:-3] + "y"
-        elif word.endswith("s") and not word.endswith("ss") and len(word) > 5:
-            word = word[:-1]
-        if word not in keywords:
-            keywords.append(word)
-    return keywords[:3]
+        word = _singular_word(word)
+        if word not in terms:
+            terms.append(word)
+    return terms[:5]
+
+
+def _singular_word(word: str) -> str:
+    if word.endswith("ies") and len(word) > 5:
+        return word[:-3] + "y"
+    if word.endswith("s") and not word.endswith("ss") and len(word) > 5:
+        return word[:-1]
+    return word
 
 
 class KnowledgeAssistantService:
@@ -76,14 +93,6 @@ class KnowledgeAssistantService:
         resolutions = await self._repository.resolve_entities(plan.entity_names, namespace)
         missing = [resolution.requested_name for resolution in resolutions if not resolution.matches]
         ambiguous = [resolution for resolution in resolutions if len(resolution.matches) > 1]
-        service_keywords = _service_search_keywords(cleaned_question)
-
-        if missing and not service_keywords:
-            return self._insufficient_response(
-                question=cleaned_question,
-                answer=f"I couldn't find {', '.join(missing)} in the current knowledge base.",
-                matched_entities=[match for resolution in resolutions for match in resolution.matches],
-            )
 
         if ambiguous:
             ambiguous_names = ", ".join(resolution.requested_name for resolution in ambiguous)
@@ -95,7 +104,7 @@ class KnowledgeAssistantService:
 
         matched_entities = [resolution.matches[0] for resolution in resolutions if resolution.matches]
         entity_ids = [entity.id for entity in matched_entities]
-        claims = (
+        direct_claims = (
             await self._repository.get_claim_context(
                 entity_ids=entity_ids,
                 predicates=plan.predicates,
@@ -106,33 +115,37 @@ class KnowledgeAssistantService:
             )
             if not missing else []
         )
-        if service_keywords and not any(claim.subject_type == "SERVICE" for claim in claims):
-            candidate_ids = await self._repository.search_service_claim_ids(service_keywords, namespace, self._max_claims)
-            if candidate_ids:
-                claims = await self._repository.get_claim_context(
-                    entity_ids=[],
-                    predicates=[],
-                    direction=QueryDirection.BOTH,
-                    namespace=namespace,
-                    max_claims=self._max_claims,
-                    max_evidence_per_claim=self._max_evidence_per_claim,
-                    candidate_claim_ids=candidate_ids,
-                )
-                matched_entities = list({
-                    claim.subject_entity_id: MatchedEntity(
-                        id=claim.subject_entity_id,
-                        label=claim.subject_name,
-                        entity_type=claim.subject_type,
-                        namespace=namespace,
-                    ) for claim in claims
-                }.values())
-                entity_ids = [entity.id for entity in matched_entities]
+        terms = _search_terms(cleaned_question, plan.search_terms)
+        candidate_ids = await self._repository.search_claim_ids(
+            terms, namespace, self._max_claims, plan.answer_entity_types, plan.predicates
+        ) if terms else []
+        candidate_claims = []
+        if candidate_ids:
+            found = await self._repository.get_claim_context(
+                entity_ids=[], predicates=[], direction=QueryDirection.BOTH, namespace=namespace,
+                max_claims=self._max_claims, max_evidence_per_claim=self._max_evidence_per_claim,
+                candidate_claim_ids=candidate_ids,
+            )
+            by_id = {claim.claim_id: claim for claim in found}
+            candidate_claims = [by_id[claim_id] for claim_id in candidate_ids if claim_id in by_id]
+        preferred = candidate_claims if plan.answer_entity_types else direct_claims
+        secondary = direct_claims if plan.answer_entity_types else candidate_claims
+        claims = list({claim.claim_id: claim for claim in [*preferred, *secondary]}.values())[:self._max_claims]
         if missing and not claims:
             return self._insufficient_response(
                 question=cleaned_question,
                 answer=f"I couldn't find {', '.join(missing)} in the current knowledge base.",
                 matched_entities=matched_entities,
             )
+        for claim in claims:
+            if claim.subject_entity_id not in entity_ids:
+                matched_entities.append(MatchedEntity(
+                    id=claim.subject_entity_id, label=claim.subject_name,
+                    entity_type=claim.subject_type, namespace=namespace,
+                ))
+                entity_ids.append(claim.subject_entity_id)
+            if claim.object_entity_id and claim.object_entity_id not in entity_ids:
+                entity_ids.append(claim.object_entity_id)
         open_gaps = await self._repository.get_open_gaps(entity_ids)
         open_conflicts = await self._repository.get_open_conflicts([claim.claim_id for claim in claims])
         full_context = KnowledgeContext(

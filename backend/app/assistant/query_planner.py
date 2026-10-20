@@ -3,7 +3,7 @@ import json
 from app.ai.client import StructuredAIClient
 from app.ai.prompts import get_assistant_query_planning_prompt
 from app.assistant.models import KnowledgeQueryPlan
-from app.domain.ontology import get_allowed_predicates
+from app.domain.ontology import get_allowed_entity_types, get_allowed_predicates
 
 
 class QueryPlanner:
@@ -16,6 +16,7 @@ class QueryPlanner:
 
     def _build_prompt(self, question: str) -> str:
         context = {
+            "allowed_entity_types": sorted(get_allowed_entity_types()),
             "allowed_predicates": sorted(get_allowed_predicates()),
             "user_question": question,
         }

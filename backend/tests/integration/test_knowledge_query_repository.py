@@ -68,6 +68,7 @@ async def create_base(client: Neo4jClient) -> None:
         entity("test:assistantrepo:topic", "Eval Topic", "TOPIC"),
         entity("test:assistantrepo:consumer", "Eval Consumer", "SERVICE"),
         entity("test:assistantrepo:database", "Eval Database", "DATABASE"),
+        entity("test:assistantrepo:document", "Eval Brief", "DOCUMENT"),
         entity("test:assistantrepo:ambiguous-a", "Shared Name", "SERVICE"),
         entity("test:assistantrepo:ambiguous-b", "Shared Name", "SYSTEM"),
         entity("test:assistantrepo:other", "Other Service", "SERVICE", namespace="other-assistant-repo"),
@@ -167,7 +168,7 @@ def test_namespace_isolation_and_open_gap_conflict_context() -> None:
     run_with_client(body)
 
 
-def test_service_evidence_search_is_bounded_to_current_namespace_claims() -> None:
+def test_claim_search_is_bounded_to_current_namespace_and_current_evidence() -> None:
     async def body(client: Neo4jClient) -> None:
         await create_base(client)
         await create_claim(client, "test:assistantrepo:claim:shipment", "test:assistantrepo:service", "WRITES_TO", "test:assistantrepo:database", ClaimStatus.PROPOSED)
@@ -183,10 +184,43 @@ def test_service_evidence_search_is_bounded_to_current_namespace_claims() -> Non
             )
 
         repository = KnowledgeQueryRepository(client)
-        ids = await repository.search_service_claim_ids(["shipment"], NAMESPACE, 25)
+        ids = await repository.search_claim_ids(["shipment"], NAMESPACE, 25, ["SERVICE"], ["WRITES_TO"])
         claims = await repository.get_claim_context([], [], QueryDirection.BOTH, NAMESPACE, 25, 2, ids)
 
         assert ids == ["test:assistantrepo:claim:shipment"]
         assert [claim.claim_id for claim in claims] == ids
+
+    run_with_client(body)
+
+
+def test_claim_search_finds_non_service_subjects() -> None:
+    async def body(client: Neo4jClient) -> None:
+        await create_base(client)
+        await create_claim(client, "test:assistantrepo:claim:owner", "test:assistantrepo:team", "OWNS", "test:assistantrepo:service", ClaimStatus.CONFIRMED)
+        async with client.session() as session:
+            await session.run(
+                "MATCH (e:Evidence {id: 'test:assistantrepo:evidence:owner'}) SET e.excerpt = 'Eval Team is responsible for the payment flow.'"
+            )
+
+        ids = await KnowledgeQueryRepository(client).search_claim_ids(["payment flow"], NAMESPACE, 25, ["TEAM"], ["OWNS"])
+
+        assert ids == ["test:assistantrepo:claim:owner"]
+
+    run_with_client(body)
+
+
+def test_claim_search_ranks_requested_answer_type_over_document_overview() -> None:
+    async def body(client: Neo4jClient) -> None:
+        await create_base(client)
+        await create_claim(client, "test:assistantrepo:claim:intro", "test:assistantrepo:document", "PURPOSE", "test:assistantrepo:topic", ClaimStatus.PROPOSED)
+        await create_claim(client, "test:assistantrepo:claim:producer", "test:assistantrepo:service", "PRODUCES", "test:assistantrepo:topic", ClaimStatus.PROPOSED)
+        async with client.session() as session:
+            await session.run(
+                "MATCH (e:Evidence) WHERE e.id STARTS WITH 'test:assistantrepo:evidence:' SET e.excerpt = 'Describes shipment events.'"
+            )
+
+        ids = await KnowledgeQueryRepository(client).search_claim_ids(["shipment"], NAMESPACE, 25, ["SERVICE"], ["PRODUCES"])
+
+        assert ids == ["test:assistantrepo:claim:producer", "test:assistantrepo:claim:intro"]
 
     run_with_client(body)

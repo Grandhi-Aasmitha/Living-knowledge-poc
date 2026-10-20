@@ -111,13 +111,20 @@ class KnowledgeQueryRepository:
 
         return [self._claim_from_record(record) for record in records]
 
-    async def search_service_claim_ids(self, keywords: list[str], namespace: str, max_claims: int) -> list[str]:
-        if not keywords:
+    async def search_claim_ids(
+        self,
+        terms: list[str],
+        namespace: str,
+        max_claims: int,
+        answer_entity_types: list[str] | None = None,
+        predicates: list[str] | None = None,
+    ) -> list[str]:
+        if not terms:
             return []
         async with self._client.session() as session:
             result = await session.run(
                 """
-                MATCH (claim:Claim)-[:SUBJECT]->(subject:Entity {namespace: $namespace, status: 'ACTIVE', entity_type: 'SERVICE'})
+                MATCH (claim:Claim)-[:SUBJECT]->(subject:Entity {namespace: $namespace, status: 'ACTIVE'})
                 WHERE claim.status IN $claim_statuses
                   AND (claim.valid_from IS NULL OR datetime(claim.valid_from) <= datetime())
                   AND (claim.valid_to IS NULL OR datetime(claim.valid_to) > datetime())
@@ -126,17 +133,30 @@ class KnowledgeQueryRepository:
                 WHERE object IS NULL OR (object.namespace = $namespace AND object.status = 'ACTIVE')
                 MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)
                 WHERE coalesce(evidence.is_current, true)
-                  AND any(keyword IN $keywords WHERE
-                      toLower(coalesce(evidence.excerpt, '')) CONTAINS keyword
-                      OR toLower(subject.canonical_name) CONTAINS keyword
-                      OR toLower(coalesce(object.canonical_name, '')) CONTAINS keyword)
-                RETURN claim.id AS claim_id, count(DISTINCT evidence) AS evidence_count
-                ORDER BY evidence_count DESC, claim_id
+                WITH claim, subject, object, evidence,
+                     [term IN $terms WHERE
+                        toLower(coalesce(evidence.excerpt, '')) CONTAINS term
+                        OR toLower(subject.canonical_name) CONTAINS term
+                        OR any(alias IN coalesce(subject.aliases, []) WHERE toLower(alias) CONTAINS term)
+                        OR toLower(coalesce(object.canonical_name, '')) CONTAINS term
+                        OR any(alias IN coalesce(object.aliases, []) WHERE toLower(alias) CONTAINS term)
+                        OR toLower(coalesce(claim.object_value, '')) CONTAINS term
+                     ] AS matched_terms
+                WHERE size(matched_terms) > 0
+                WITH claim, subject, object, max(size(matched_terms)) AS term_matches,
+                     count(DISTINCT evidence) AS evidence_count
+                RETURN claim.id AS claim_id
+                ORDER BY CASE WHEN subject.entity_type IN $answer_entity_types OR object.entity_type IN $answer_entity_types THEN 1 ELSE 0 END DESC,
+                         CASE WHEN claim.predicate IN $predicates THEN 1 ELSE 0 END DESC,
+                         term_matches DESC,
+                         evidence_count DESC, claim_id
                 LIMIT $max_claims
                 """,
                 namespace=namespace,
                 claim_statuses=COUNTED_CLAIM_STATUSES,
-                keywords=keywords,
+                terms=terms,
+                answer_entity_types=answer_entity_types or [],
+                predicates=predicates or [],
                 max_claims=max_claims,
             )
             records = await result.data()
