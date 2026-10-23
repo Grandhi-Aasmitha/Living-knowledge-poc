@@ -196,5 +196,3 @@ Neo4j unavailable:
   "neo4j": "DOWN"
 }
 ```
-
-Thanks and regards
