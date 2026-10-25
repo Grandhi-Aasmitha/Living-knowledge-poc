@@ -288,6 +288,53 @@ def test_composed_question_retrieves_answer_type_through_related_entity() -> Non
     assert {citation.claim_id for citation in response.citations} == {"claim:publishes", "claim:owns"}
 
 
+def test_composed_question_expands_for_missing_type_when_another_type_is_present() -> None:
+    writer = RetrievedClaim(
+        claim_id="claim:writes", subject_entity_id="service:writer", subject_name="Writer Service",
+        subject_type="SERVICE", predicate="WRITES_TO", object_entity_id="database:plans",
+        object_name="Plans Database", object_type="DATABASE", claim_status=ClaimStatus.PROPOSED,
+        confidence=0.99, evidence=[RetrievedEvidence(
+            evidence_id="evidence:writes", source_id="source:one", source_type="FILE_UPLOAD",
+            source_title="Workflow", excerpt="Writer Service writes a plan to Plans Database.",
+        )],
+    )
+    owner = RetrievedClaim(
+        claim_id="claim:owns", subject_entity_id="team:ops", subject_name="Ops Team",
+        subject_type="TEAM", predicate="OWNS", object_entity_id="service:writer",
+        object_name="Writer Service", object_type="SERVICE", claim_status=ClaimStatus.PROPOSED,
+        confidence=0.99, evidence=[RetrievedEvidence(
+            evidence_id="evidence:owns", source_id="source:two", source_type="FILE_UPLOAD",
+            source_title="Ownership", excerpt="Ops Team owns Writer Service.",
+        )],
+    )
+
+    class RelatedRepository(FakeRepository):
+        async def search_claim_ids(self, terms: list[str], namespace: str, max_claims: int, answer_entity_types: list[str], predicates: list[str]) -> list[str]:
+            return ["claim:writes"]
+
+        async def get_claim_context(self, **kwargs) -> list[RetrievedClaim]:
+            if kwargs.get("answer_entity_types"):
+                assert kwargs["answer_entity_types"] == ["TEAM"]
+                return [owner]
+            return [writer]
+
+    generator = FakeGenerator(AnswerDraft(
+        answer="Ops Team owns Writer Service, which writes to Plans Database.",
+        insufficient_knowledge=False, cited_claim_ids=["claim:writes", "claim:owns"],
+        cited_evidence_ids=["evidence:writes", "evidence:owns"],
+    ))
+    assistant = service(RelatedRepository([]), generator)
+    assistant._query_planner = FakePlanner(KnowledgeQueryPlan(
+        entity_names=[], predicates=["WRITES_TO", "OWNS"], direction=QueryDirection.BOTH,
+        search_terms=["plans"], answer_entity_types=["TEAM", "DATABASE"],
+    ))
+
+    response = run(assistant.ask("Which team owns the service writing plans, and where?", "trial"))
+
+    assert [claim.claim_id for claim in generator.context.claims] == ["claim:writes", "claim:owns"]
+    assert {citation.claim_id for citation in response.citations} == {"claim:writes", "claim:owns"}
+
+
 def test_answer_draft_removes_internal_wrapping_from_answer() -> None:
     draft = AnswerDraft(
         answer="AnswerDraft: Cedar Fulfillment Service handles shipments. [Claim: claim:one; Evidence: evidence:one]",
@@ -304,6 +351,8 @@ def test_question_terms_are_generic_fallback_when_planner_omits_them() -> None:
     assert _search_terms("Where is payment data stored?", ["payment data"]) == ["payment data"]
     assert _search_terms("Which service handles shipments?", ["shipments"]) == ["shipments", "shipment"]
     assert _search_terms("Who owns Unknown Service?", ["service"]) == ["unknown"]
+    assert _search_terms("Where are route plans stored?", ["route plans"]) == ["route plans", "route plan"]
+    assert _search_terms("What is the topic status?", ["status"]) == ["status"]
 
 
 def test_database_question_uses_generic_claim_search() -> None:

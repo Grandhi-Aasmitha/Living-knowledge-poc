@@ -58,7 +58,7 @@ def _search_terms(question: str, planned_terms: list[str]) -> list[str]:
 def _singular_word(word: str) -> str:
     if word.endswith("ies") and len(word) > 5:
         return word[:-3] + "y"
-    if word.endswith("s") and not word.endswith("ss") and len(word) > 5:
+    if word.endswith("s") and not word.endswith(("ss", "us", "is")) and len(word) > 4:
         return word[:-1]
     return word
 
@@ -131,10 +131,11 @@ class KnowledgeAssistantService:
         preferred = candidate_claims if plan.answer_entity_types else direct_claims
         secondary = direct_claims if plan.answer_entity_types else candidate_claims
         claims = list({claim.claim_id: claim for claim in [*preferred, *secondary]}.values())[:self._max_claims]
-        if plan.answer_entity_types and claims and not any(
-            claim.subject_type in plan.answer_entity_types or claim.object_type in plan.answer_entity_types
-            for claim in claims
-        ):
+        missing_answer_types = [
+            entity_type for entity_type in plan.answer_entity_types
+            if not any(claim.subject_type == entity_type or claim.object_type == entity_type for claim in claims)
+        ]
+        if missing_answer_types and claims:
             bridge_entity_ids = list(dict.fromkeys(
                 entity_id
                 for claim in claims
@@ -150,7 +151,7 @@ class KnowledgeAssistantService:
                     namespace=namespace,
                     max_claims=remaining,
                     max_evidence_per_claim=self._max_evidence_per_claim,
-                    answer_entity_types=plan.answer_entity_types,
+                    answer_entity_types=missing_answer_types,
                 )
                 claims = list({claim.claim_id: claim for claim in [*claims, *related_claims]}.values())[:self._max_claims]
         if missing and not claims:

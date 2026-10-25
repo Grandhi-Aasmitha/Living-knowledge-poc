@@ -25,3 +25,5 @@ The two-step question about the team owning the publisher of Shipment Status Top
 ## After the retrieval fix
 
 The Assistant now answers the two-step question with **Aster Experience Team** and cites both the publishing and ownership claims. It still reports the owner of Route Plan Database as unknown, even though it can see which services read and write that database. The claims remain proposed until reviewed.
+
+An additional composed question, "Which team owns the service that writes route plans, and where are the plans stored?", now returns **Aster Logistics Team**, **Aster Routing Service**, and **Route Plan Database**, citing the writing and ownership claims. The phrase "route plans" must also find evidence phrased as "route plan". The customer portal question still succeeds, and ownership of Returns Ledger Database remains unknown.
