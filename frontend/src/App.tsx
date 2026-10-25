@@ -274,7 +274,10 @@ export default function App() {
   }
 
   function selectFiles(event: ChangeEvent<HTMLInputElement>) {
-    setSelectedFiles(Array.from(event.target.files ?? []));
+    const files = Array.from(event.target.files ?? []);
+    setSelectedFiles(files);
+    const folderNames = [...new Set(files.map((file) => file.webkitRelativePath.split('/')[0]).filter(Boolean))];
+    if (folderNames.length === 1) setNamespace(folderNames[0]);
     setForceReprocess(false);
     setIngestionMessage('');
     setLastIngestion(null);
@@ -391,7 +394,7 @@ export default function App() {
           <input id="source-file" type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFiles} disabled={isUploading} />
           <label htmlFor="source-folder">Or select a folder of documents</label>
           <input id="source-folder" ref={folderInputRef} type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFiles} disabled={isUploading} />
-          <p className="muted">{selectedFiles.length} file(s) selected. Every selected file is uploaded to the active namespace. Select a different namespace for another folder.</p>
+          <p className="muted">{selectedFiles.length} file(s) selected. A selected folder suggests its name as the namespace; you can edit it before uploading. Every selected file goes to the active namespace.</p>
           <label htmlFor="namespace">Namespace</label>
           <input id="namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} disabled={isUploading} />
           <label className="inline-option">
