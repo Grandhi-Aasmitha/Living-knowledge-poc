@@ -98,6 +98,7 @@ class RetrievedClaim(BaseModel):
     predicate: str
     object_entity_id: str | None = None
     object_name: str | None = None
+    object_type: str | None = None
     object_value: str | None = None
     claim_status: ClaimStatus
     confidence: float

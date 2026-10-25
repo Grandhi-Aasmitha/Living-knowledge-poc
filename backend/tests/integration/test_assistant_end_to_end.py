@@ -30,6 +30,8 @@ NAMESPACE = "phase9-eval"
 class FakeStructuredAIClient:
     async def generate_structured(self, prompt: str, response_model):
         if response_model is KnowledgeQueryPlan:
+            if "Which team owns the service that produces Eval Topic" in prompt:
+                return KnowledgeQueryPlan(entity_names=["Eval Topic"], predicates=["PRODUCES", "OWNS"], direction=QueryDirection.BOTH, answer_entity_types=["TEAM"])
             if "Who owns Eval Service" in prompt:
                 return KnowledgeQueryPlan(entity_names=["Eval Service"], predicates=["OWNS"], direction=QueryDirection.INCOMING)
             if "What consumes Eval Topic" in prompt:
@@ -37,6 +39,12 @@ class FakeStructuredAIClient:
             if "What does Eval Service produce" in prompt:
                 return KnowledgeQueryPlan(entity_names=["Eval Service"], predicates=["PRODUCES"], direction=QueryDirection.OUTGOING)
             return KnowledgeQueryPlan(entity_names=["Eval Database"], predicates=["WRITES_TO"], direction=QueryDirection.INCOMING)
+        if '"user_question": "Which team owns the service that produces Eval Topic?"' in prompt:
+            return AnswerDraft(
+                answer="Eval Team owns Eval Service, which produces Eval Topic.", insufficient_knowledge=False,
+                cited_claim_ids=["phase9-eval:claim:owns", "phase9-eval:claim:produces"],
+                cited_evidence_ids=["phase9-eval:evidence:owns", "phase9-eval:evidence:produces"],
+            )
         if '"user_question": "Who owns Eval Service?"' in prompt:
             return AnswerDraft(answer="Eval Team owns Eval Service.", insufficient_knowledge=False, cited_claim_ids=["phase9-eval:claim:owns"], cited_evidence_ids=["phase9-eval:evidence:owns"])
         if '"user_question": "What consumes Eval Topic?"' in prompt:
@@ -114,12 +122,14 @@ def test_assistant_answers_source_backed_questions_and_refuses_unknown() -> None
         owner = await assistant.ask("Who owns Eval Service?", NAMESPACE)
         consumer = await assistant.ask("What consumes Eval Topic?", NAMESPACE)
         producer = await assistant.ask("What does Eval Service produce?", NAMESPACE)
+        composed = await assistant.ask("Which team owns the service that produces Eval Topic?", NAMESPACE)
         unknown = await assistant.ask("What writes to Eval Database?", NAMESPACE)
 
         assert owner.knowledge_status == "CONFIRMED"
         assert {citation.claim_id for citation in owner.citations} == {"phase9-eval:claim:owns"}
         assert {citation.claim_id for citation in consumer.citations} == {"phase9-eval:claim:consumes"}
         assert {citation.claim_id for citation in producer.citations} == {"phase9-eval:claim:produces"}
+        assert {citation.claim_id for citation in composed.citations} == {"phase9-eval:claim:owns", "phase9-eval:claim:produces"}
         assert unknown.insufficient_knowledge is True
         assert unknown.citations == []
 

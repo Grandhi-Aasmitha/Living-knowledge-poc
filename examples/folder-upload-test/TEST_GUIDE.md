@@ -16,8 +16,12 @@ Expected answers from the source documents:
 
 Uploaded file claims start as **PROPOSED**. An answer can cite them while saying they are unconfirmed. Use **Review uploaded claims** to inspect and confirm supported claims if you want the app to treat them as confirmed. Do not confirm claims the source does not support.
 
-## Trial result on 2026-10-25
+## Initial trial result on 2026-10-25
 
 All four files uploaded successfully into `aster-field-ops-test`. The app reported 24 proposed claims, and the graph showed 13 entities and 15 relationship edges. There were no open entity identity questions. The seven questions above produced six expected outcomes: five supported answers and the correct "unknown" response for Route Plan Database ownership.
 
 The two-step question about the team owning the publisher of Shipment Status Topic did **not** succeed. The graph contains both `Aster Tracking Service PUBLISHES_TO Shipment Status Topic` and `Aster Experience Team OWNS Aster Tracking Service`, and direct questions about each fact work. The Assistant did not retrieve both claims together for the composed question, so it returned insufficient knowledge. This is a retrieval limitation, not an upload or extraction failure.
+
+## After the retrieval fix
+
+The Assistant now answers the two-step question with **Aster Experience Team** and cites both the publishing and ownership claims. It still reports the owner of Route Plan Database as unknown, even though it can see which services read and write that database. The claims remain proposed until reviewed.

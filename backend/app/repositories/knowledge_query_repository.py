@@ -60,6 +60,7 @@ class KnowledgeQueryRepository:
         max_claims: int,
         max_evidence_per_claim: int,
         candidate_claim_ids: list[str] | None = None,
+        answer_entity_types: list[str] | None = None,
     ) -> list[RetrievedClaim]:
         async with self._client.session() as session:
             result = await session.run(
@@ -80,6 +81,7 @@ class KnowledgeQueryRepository:
                     OR ($direction = 'BOTH' AND (subject.id IN $entity_ids OR (object IS NOT NULL AND object.id IN $entity_ids)))
                   )
                   AND (object IS NULL OR (object.namespace = $namespace AND object.status = 'ACTIVE'))
+                  AND ($answer_entity_type_count = 0 OR subject.entity_type IN $answer_entity_types OR (object IS NOT NULL AND object.entity_type IN $answer_entity_types))
                 OPTIONAL MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)-[:FROM_SOURCE]->(source:KnowledgeSource)
                 OPTIONAL MATCH (evidence)-[:FROM_CHUNK]->(chunk:SourceChunk)<-[:HAS_CHUNK]-(version:SourceVersion)<-[:HAS_VERSION]-(document:SourceDocument)
                 WITH claim, subject, object, evidence, source, chunk, version, document
@@ -106,6 +108,8 @@ class KnowledgeQueryRepository:
                 max_claims=max_claims,
                 max_evidence_per_claim=max_evidence_per_claim,
                 candidate_claim_ids=candidate_claim_ids,
+                answer_entity_types=answer_entity_types or [],
+                answer_entity_type_count=len(answer_entity_types or []),
             )
             records = await result.data()
 
@@ -225,6 +229,7 @@ class KnowledgeQueryRepository:
             predicate=claim["predicate"],
             object_entity_id=None if object_entity is None else object_entity["id"],
             object_name=None if object_entity is None else object_entity["canonical_name"],
+            object_type=None if object_entity is None else object_entity["entity_type"],
             object_value=claim.get("object_value"),
             claim_status=claim["status"],
             confidence=float(claim["confidence"]),

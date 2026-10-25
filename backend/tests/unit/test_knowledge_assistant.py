@@ -237,6 +237,57 @@ def test_service_question_uses_service_evidence_instead_of_document_intro() -> N
     assert response.knowledge_status == "PROPOSED"
 
 
+def test_composed_question_retrieves_answer_type_through_related_entity() -> None:
+    publisher = RetrievedClaim(
+        claim_id="claim:publishes", subject_entity_id="service:tracking", subject_name="Tracking Service",
+        subject_type="SERVICE", predicate="PUBLISHES_TO", object_entity_id="topic:status",
+        object_name="Status Topic", object_type="TOPIC", claim_status=ClaimStatus.PROPOSED,
+        confidence=0.98, evidence=[RetrievedEvidence(
+            evidence_id="evidence:publishes", source_id="source:one", source_type="FILE_UPLOAD",
+            source_title="Tracking", excerpt="Tracking Service publishes to Status Topic.",
+        )],
+    )
+    owner = RetrievedClaim(
+        claim_id="claim:owns", subject_entity_id="team:experience", subject_name="Experience Team",
+        subject_type="TEAM", predicate="OWNS", object_entity_id="service:tracking",
+        object_name="Tracking Service", object_type="SERVICE", claim_status=ClaimStatus.PROPOSED,
+        confidence=0.98, evidence=[RetrievedEvidence(
+            evidence_id="evidence:owns", source_id="source:two", source_type="FILE_UPLOAD",
+            source_title="Ownership", excerpt="Experience Team maintains Tracking Service.",
+        )],
+    )
+
+    class RelatedRepository(FakeRepository):
+        async def resolve_entities(self, names: list[str], namespace: str) -> list[EntityResolution]:
+            return [EntityResolution(requested_name=name, matches=[MatchedEntity(
+                id="topic:status", label="Status Topic", entity_type="TOPIC", namespace=namespace,
+            )]) for name in names]
+
+        async def get_claim_context(self, **kwargs) -> list[RetrievedClaim]:
+            if kwargs.get("answer_entity_types"):
+                assert kwargs["entity_ids"] == ["service:tracking", "topic:status"]
+                assert kwargs["answer_entity_types"] == ["TEAM"]
+                return [owner]
+            return [publisher]
+
+    generator = FakeGenerator(AnswerDraft(
+        answer="Experience Team owns Tracking Service, which publishes Status Topic.",
+        insufficient_knowledge=False,
+        cited_claim_ids=["claim:publishes", "claim:owns"],
+        cited_evidence_ids=["evidence:publishes", "evidence:owns"],
+    ))
+    assistant = service(RelatedRepository([]), generator)
+    assistant._query_planner = FakePlanner(KnowledgeQueryPlan(
+        entity_names=["Status Topic"], predicates=["PUBLISHES_TO", "OWNS"],
+        direction=QueryDirection.BOTH, answer_entity_types=["TEAM"],
+    ))
+
+    response = run(assistant.ask("Which team owns the service publishing Status Topic?", "trial"))
+
+    assert [claim.claim_id for claim in generator.context.claims] == ["claim:publishes", "claim:owns"]
+    assert {citation.claim_id for citation in response.citations} == {"claim:publishes", "claim:owns"}
+
+
 def test_answer_draft_removes_internal_wrapping_from_answer() -> None:
     draft = AnswerDraft(
         answer="AnswerDraft: Cedar Fulfillment Service handles shipments. [Claim: claim:one; Evidence: evidence:one]",

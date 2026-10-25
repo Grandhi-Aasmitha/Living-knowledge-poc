@@ -131,6 +131,28 @@ class KnowledgeAssistantService:
         preferred = candidate_claims if plan.answer_entity_types else direct_claims
         secondary = direct_claims if plan.answer_entity_types else candidate_claims
         claims = list({claim.claim_id: claim for claim in [*preferred, *secondary]}.values())[:self._max_claims]
+        if plan.answer_entity_types and claims and not any(
+            claim.subject_type in plan.answer_entity_types or claim.object_type in plan.answer_entity_types
+            for claim in claims
+        ):
+            bridge_entity_ids = list(dict.fromkeys(
+                entity_id
+                for claim in claims
+                for entity_id in (claim.subject_entity_id, claim.object_entity_id)
+                if entity_id is not None
+            ))
+            remaining = self._max_claims - len(claims)
+            if bridge_entity_ids and remaining > 0:
+                related_claims = await self._repository.get_claim_context(
+                    entity_ids=bridge_entity_ids,
+                    predicates=[],
+                    direction=QueryDirection.BOTH,
+                    namespace=namespace,
+                    max_claims=remaining,
+                    max_evidence_per_claim=self._max_evidence_per_claim,
+                    answer_entity_types=plan.answer_entity_types,
+                )
+                claims = list({claim.claim_id: claim for claim in [*claims, *related_claims]}.values())[:self._max_claims]
         if missing and not claims:
             return self._insufficient_response(
                 question=cleaned_question,
