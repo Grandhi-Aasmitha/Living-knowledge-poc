@@ -97,7 +97,6 @@ h3 {
 
 .status-row,
 .gap-item,
-.document-item,
 .scan-result {
   display: flex;
   align-items: center;
@@ -650,8 +649,6 @@ summary:focus-visible {
   outline: 2px solid #bfdbfe;
   outline-offset: 3px;
 }
-
-.document-list { display: grid; gap: 0.75rem; }
 
 .review-card { width: min(100%, 76rem); display: grid; gap: 1rem; }
 .review-namespace, .review-form label { display: grid; gap: 0.4rem; }

@@ -416,20 +416,6 @@ export default function App() {
 
         {lastIngestion !== null && <LearningReport key={lastIngestion.result.version_id ?? lastIngestion.result.document_id} result={lastIngestion.result} filename={lastIngestion.filename} />}
 
-        {documents.length > 0 && (
-          <div className="document-list">
-            {documents.map((document) => (
-              <article className="document-item" key={document.id}>
-                <div>
-                  <h3>{document.title}</h3>
-                  <p>{document.filename}</p>
-                  <p className="muted">Team: {document.namespace}</p>
-                </div>
-                <span className="badge">{document.latest_version === 0 ? 'Incomplete — retry upload' : `v${document.latest_version}`}</span>
-              </article>
-            ))}
-          </div>
-        )}
       </section>
 
       <ClaimReview apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} onKnowledgeUpdated={() => setGraphRevision((revision) => revision + 1)} />
