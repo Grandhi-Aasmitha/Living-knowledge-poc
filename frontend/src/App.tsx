@@ -311,6 +311,11 @@ export default function App() {
         try {
           const response = await fetch(SOURCES_URL, { method: 'POST', body: formData });
           if (!response.ok) {
+            if (response.status === 401) {
+              setAuth({ required: true, authenticated: false });
+              setLoginMessage('Your session expired. Sign in again, then retry the upload.');
+              return;
+            }
             const error = response.status === 422 ? await response.json() as { detail?: unknown } : null;
             const detail = typeof error?.detail === 'string' ? error.detail : response.status === 413 ? 'File exceeds the upload size limit' : response.status === 503 ? 'AI provider is unavailable' : `HTTP ${response.status}`;
             failures.push(`${file.name}: ${detail}`);
