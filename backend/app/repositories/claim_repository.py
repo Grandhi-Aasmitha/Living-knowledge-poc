@@ -99,6 +99,23 @@ class ClaimRepository:
             raise ValueError("Claim is not eligible for human confirmation")
         return _claim_from_node(record["claim"])
 
+    async def confirm_unreviewed_upload_claim(self, claim_id: str) -> Claim | None:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (claim:Claim {id: $id, status: 'PROPOSED'})
+                WHERE NOT EXISTS { MATCH (claim)-[:HAS_REVIEW]->(:ClaimReview) }
+                  AND EXISTS {
+                    MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence)-[:FROM_SOURCE]->(:KnowledgeSource {source_type: 'FILE_UPLOAD'})
+                  }
+                SET claim.status = 'CONFIRMED', claim.updated_at = toString(datetime())
+                RETURN claim
+                """,
+                id=claim_id,
+            )
+            record = await result.single()
+        return None if record is None else _claim_from_node(record["claim"])
+
     async def list_for_entity(self, entity_id: str) -> list[Claim]:
         async with self._client.session() as session:
             result = await session.run(

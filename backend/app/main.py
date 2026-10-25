@@ -111,6 +111,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             entity_resolution_max_candidates=settings.entity_resolution_max_candidates,
             learning_repository=LearningRepository(app.state.neo4j),
             require_explicit_relationships=settings.ai_provider == "local_rules",
+            auto_confirm_file_claims=settings.auto_confirm_file_claims,
+            extraction_audit_enabled=settings.extraction_audit_enabled and settings.ai_provider != "local_rules",
+            pdf_ocr_enabled=settings.pdf_ocr_enabled,
         )
         if settings.ai_provider != "local_rules":
             app.state.knowledge_assistant_service = KnowledgeAssistantService(

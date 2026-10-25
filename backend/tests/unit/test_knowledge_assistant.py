@@ -335,6 +335,53 @@ def test_composed_question_expands_for_missing_type_when_another_type_is_present
     assert {citation.claim_id for citation in response.citations} == {"claim:writes", "claim:owns"}
 
 
+def test_composed_question_can_cross_an_intermediate_relation() -> None:
+    def relation(claim_id: str, subject_id: str, subject_name: str, subject_type: str,
+                 predicate: str, object_id: str, object_name: str, object_type: str) -> RetrievedClaim:
+        return RetrievedClaim(
+            claim_id=claim_id, subject_entity_id=subject_id, subject_name=subject_name,
+            subject_type=subject_type, predicate=predicate, object_entity_id=object_id,
+            object_name=object_name, object_type=object_type, claim_status=ClaimStatus.PROPOSED,
+            confidence=0.9, evidence=[RetrievedEvidence(
+                evidence_id=f"evidence:{claim_id}", source_id="source:test", source_type="FILE_UPLOAD",
+                source_title="Test document", excerpt=f"{subject_name} {predicate} {object_name}.",
+            )],
+        )
+
+    first = relation("claim:first", "service:gateway", "Gateway Service", "SERVICE", "PUBLISHES_TO", "topic:events", "Events Topic", "TOPIC")
+    middle = relation("claim:middle", "service:relay", "Relay Service", "SERVICE", "DEPENDS_ON", "service:gateway", "Gateway Service", "SERVICE")
+    last = relation("claim:last", "team:ops", "Ops Team", "TEAM", "OWNS", "service:relay", "Relay Service", "SERVICE")
+
+    class TwoHopRepository(FakeRepository):
+        async def resolve_entities(self, names: list[str], namespace: str) -> list[EntityResolution]:
+            return [EntityResolution(requested_name="Events Topic", matches=[MatchedEntity(
+                id="topic:events", label="Events Topic", entity_type="TOPIC", namespace=namespace,
+            )])]
+
+        async def get_claim_context(self, **kwargs) -> list[RetrievedClaim]:
+            if kwargs.get("answer_entity_types"):
+                return [last] if "service:relay" in kwargs["entity_ids"] else []
+            if "service:gateway" in kwargs.get("entity_ids", []):
+                return [first, middle]
+            return [first]
+
+    generator = FakeGenerator(AnswerDraft(
+        answer="Ops Team owns Relay Service, which depends on Gateway Service, the publisher of Events Topic.",
+        insufficient_knowledge=False, cited_claim_ids=["claim:first", "claim:middle", "claim:last"],
+        cited_evidence_ids=["evidence:claim:first", "evidence:claim:middle", "evidence:claim:last"],
+    ))
+    assistant = service(TwoHopRepository([]), generator)
+    assistant._query_planner = FakePlanner(KnowledgeQueryPlan(
+        entity_names=["Events Topic"], predicates=["PUBLISHES_TO", "DEPENDS_ON", "OWNS"],
+        direction=QueryDirection.BOTH, answer_entity_types=["TEAM"],
+    ))
+
+    response = run(assistant.ask("Which team owns the relay depending on the publisher of Events Topic?", "trial"))
+
+    assert [claim.claim_id for claim in generator.context.claims] == ["claim:first", "claim:middle", "claim:last"]
+    assert len(response.citations) == 3
+
+
 def test_answer_draft_removes_internal_wrapping_from_answer() -> None:
     draft = AnswerDraft(
         answer="AnswerDraft: Cedar Fulfillment Service handles shipments. [Claim: claim:one; Evidence: evidence:one]",

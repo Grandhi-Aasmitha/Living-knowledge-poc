@@ -154,6 +154,38 @@ class KnowledgeAssistantService:
                     answer_entity_types=missing_answer_types,
                 )
                 claims = list({claim.claim_id: claim for claim in [*claims, *related_claims]}.values())[:self._max_claims]
+                still_missing = [
+                    entity_type for entity_type in missing_answer_types
+                    if not any(claim.subject_type == entity_type or claim.object_type == entity_type for claim in claims)
+                ]
+                remaining = self._max_claims - len(claims)
+                if still_missing and remaining > 1:
+                    intermediate_claims = await self._repository.get_claim_context(
+                        entity_ids=bridge_entity_ids, predicates=[], direction=QueryDirection.BOTH,
+                        namespace=namespace, max_claims=max(1, remaining // 2),
+                        max_evidence_per_claim=self._max_evidence_per_claim,
+                    )
+                    known_claim_ids = {claim.claim_id for claim in claims}
+                    intermediate_claims = [
+                        claim for claim in intermediate_claims if claim.claim_id not in known_claim_ids
+                    ][: max(1, remaining // 2)]
+                    frontier_ids = list(dict.fromkeys(
+                        entity_id for claim in intermediate_claims
+                        for entity_id in (claim.subject_entity_id, claim.object_entity_id)
+                        if entity_id is not None and entity_id not in bridge_entity_ids
+                    ))
+                    if frontier_ids:
+                        final_claims = await self._repository.get_claim_context(
+                            entity_ids=frontier_ids, predicates=[], direction=QueryDirection.BOTH,
+                            namespace=namespace, max_claims=remaining - len(intermediate_claims),
+                            max_evidence_per_claim=self._max_evidence_per_claim,
+                            answer_entity_types=still_missing,
+                        )
+                        if final_claims:
+                            claims = list({
+                                claim.claim_id: claim
+                                for claim in [*claims, *intermediate_claims, *final_claims]
+                            }.values())[:self._max_claims]
         if missing and not claims:
             return self._insufficient_response(
                 question=cleaned_question,

@@ -180,7 +180,8 @@ button:disabled {
 }
 
 .answer-form input,
-.answer-form textarea {
+.answer-form textarea,
+.answer-form select {
   width: 100%;
   border: 1px solid rgba(148, 163, 184, 0.32);
   border-radius: 0.75rem;

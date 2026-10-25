@@ -81,7 +81,7 @@ class LearningService:
             claim_id = stable_claim_id(subject_id, proposal.predicate, object_id, proposal.object_value, scope_id)
             if existing is not None:
                 claim_id = existing.id
-                if batch.claim_status == "CONFIRMED" and existing.status != "CONFIRMED":
+                if batch.claim_status == "CONFIRMED" and batch.document_id is None and existing.status != "CONFIRMED":
                     await self.claims.confirm(claim_id)
             else:
                 await self.claims.create(Claim(
@@ -94,5 +94,7 @@ class LearningService:
                 claim_id=claim_id, source_id=batch.source_id, source_chunk_id=batch.chunk_id,
                 excerpt=proposal.evidence_text, locator=batch.locator, is_current=is_current,
             ))
+            if batch.claim_status == "CONFIRMED" and batch.document_id is not None:
+                await self.claims.confirm_unreviewed_upload_claim(claim_id)
             applied += 1
         return applied

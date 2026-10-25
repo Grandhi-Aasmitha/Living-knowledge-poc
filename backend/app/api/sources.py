@@ -39,6 +39,7 @@ class IngestionResponse(BaseModel):
     claims_rejected: int
     unresolved_terms: list[str]
     entity_resolutions: list[EntityResolutionSummaryResponse] = Field(default_factory=list)
+    auto_confirmed: bool = False
 
 
 class SourceDocumentResponse(BaseModel):

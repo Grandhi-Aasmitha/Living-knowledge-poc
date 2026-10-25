@@ -23,6 +23,7 @@ export type IngestionResponse = {
   claims_rejected: number;
   unresolved_terms: string[];
   entity_resolutions?: EntityResolutionSummary[];
+  auto_confirmed?: boolean;
 };
 
 type ReportFilter = 'ALL' | EntityResolutionSummary['action'];
@@ -64,7 +65,7 @@ export function LearningReport({ result, filename }: { result: IngestionResponse
             <div><dt>Aliases learned</dt><dd>{aliasesLearned}</dd></div>
             <div><dt>New facts</dt><dd>{result.claims_created}</dd></div>
           </dl>
-          <p className="muted">{result.evidence_created} evidence record(s) added. New extracted facts remain proposed until confirmed.</p>
+          <p className="muted">{result.evidence_created} evidence record(s) added. {result.auto_confirmed ? 'New extracted facts were confirmed automatically from this upload.' : 'New extracted facts remain proposed until confirmed.'}</p>
 
           {resolutions.length > 0 && (
             <>

@@ -6,6 +6,7 @@ import { KnowledgeAssistant } from './components/KnowledgeAssistant';
 import { IngestionResponse, LearningReport } from './components/LearningReport';
 import { ClarificationQueue } from './components/ClarificationQueue';
 import { ClaimReview } from './components/ClaimReview';
+import { EntityMergeReview } from './components/EntityMergeReview';
 import { API_ROOT } from './config';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
@@ -414,6 +415,8 @@ export default function App() {
       </section>
 
       <ClaimReview apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} onKnowledgeUpdated={() => setGraphRevision((revision) => revision + 1)} />
+
+      <EntityMergeReview apiRoot={API_ROOT} namespace={namespace} refreshVersion={graphRevision} onKnowledgeUpdated={() => { setGraphRevision((revision) => revision + 1); void loadGaps(); }} />
 
       <section className="status-card curator-card" aria-labelledby="curator-title">
         <p className="eyebrow">Phase 6 Workflow</p>

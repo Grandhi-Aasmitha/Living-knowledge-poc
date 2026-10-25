@@ -4,6 +4,7 @@ import pytest
 from docx import Document as DocxDocument
 from pptx import Presentation
 from pypdf import PdfWriter
+from PIL import Image, ImageDraw
 
 from app.documents.parsers import (
     DOCUMENT_PARSE_ERROR_MESSAGE,
@@ -11,6 +12,7 @@ from app.documents.parsers import (
     DocxParser,
     DocumentParseError,
     NoExtractableTextError,
+    PdfParser,
     PptxParser,
     TextDocumentParser,
     UnsupportedDocumentTypeError,
@@ -97,6 +99,25 @@ def test_blank_pdf_raises_no_extractable_text(tmp_path: Path) -> None:
 
     with pytest.raises(NoExtractableTextError, match=NO_EXTRACTABLE_TEXT_MESSAGE):
         get_parser("blank.pdf").parse(path, "blank.pdf")
+
+
+def test_image_only_pdf_uses_ocr_and_preserves_page_locator(tmp_path: Path) -> None:
+    import asyncio
+
+    image = Image.new("RGB", (800, 220), "white")
+    ImageDraw.Draw(image).text((30, 30), "Ops Team owns Routing Service", fill="black")
+    path = tmp_path / "scan.pdf"
+    image.save(path, "PDF")
+
+    class FakeOcr:
+        async def read_image_text(self, image_png: bytes) -> str:
+            assert image_png.startswith(b"\x89PNG")
+            return "Ops Team owns Routing Service."
+
+    parsed = asyncio.run(PdfParser().parse_with_ocr(path, "scan.pdf", FakeOcr()))
+
+    assert parsed.sections[0].content == "Ops Team owns Routing Service."
+    assert parsed.sections[0].locator == "Page 1"
 
 
 def test_corrupt_pdf_raises_safe_parse_error(tmp_path: Path) -> None:

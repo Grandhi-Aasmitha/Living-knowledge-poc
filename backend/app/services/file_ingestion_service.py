@@ -10,7 +10,7 @@ from app.ai.extraction_models import ExtractedClaim, ExtractedEntity, ExtractedK
 from app.ai.knowledge_extractor import KnowledgeExtractor
 from app.documents.chunker import DocumentChunker
 from app.documents.models import SourceChunk, SourceDocument, SourceVersion
-from app.documents.parsers import NoExtractableTextError, UnsupportedDocumentTypeError, get_parser, is_supported_filename
+from app.documents.parsers import NoExtractableTextError, PdfParser, UnsupportedDocumentTypeError, get_parser, is_supported_filename
 from app.documents.storage import DocumentStorage, safe_original_filename
 from app.domain.claim import Claim
 from app.domain.entity import Entity
@@ -56,6 +56,7 @@ class IngestionResult:
     claims_rejected: int
     unresolved_terms: list[str] = field(default_factory=list)
     entity_resolutions: list["EntityResolutionSummary"] = field(default_factory=list)
+    auto_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -91,10 +92,15 @@ class FileIngestionService:
         entity_resolution_max_candidates: int = 5,
         learning_repository: LearningRepository | None = None,
         require_explicit_relationships: bool = False,
+        auto_confirm_file_claims: bool = False,
+        extraction_audit_enabled: bool = False,
+        pdf_ocr_enabled: bool = False,
     ) -> None:
         self._storage = DocumentStorage(upload_directory, max_upload_size_mb)
         self._chunker = DocumentChunker(max_chunk_chars, max_chunks_per_document)
-        self._extractor = KnowledgeExtractor(ai_client)
+        self._extractor = KnowledgeExtractor(ai_client, audit_enabled=extraction_audit_enabled)
+        self._ai_client = ai_client
+        self._pdf_ocr_enabled = pdf_ocr_enabled
         self._entity_resolver = EntityResolver(
             ai_client=ai_client,
             entity_repository=entity_repository,
@@ -107,6 +113,7 @@ class FileIngestionService:
         self._claim_repository = claim_repository
         self._learning_repository = learning_repository
         self._require_explicit_relationships = require_explicit_relationships
+        self._auto_confirm_file_claims = auto_confirm_file_claims
         self._document_locks: dict[tuple[str, str], asyncio.Lock] = {}
 
     async def ingest(self, content: bytes, original_filename: str, namespace: str = "tstvs", force: bool = False) -> IngestionResult:
@@ -159,7 +166,11 @@ class FileIngestionService:
             )
 
         storage_key, path = self._storage.save(content, filename, content_hash)
-        parsed = get_parser(filename).parse(path, filename)
+        parser = get_parser(filename)
+        if self._pdf_ocr_enabled and isinstance(parser, PdfParser) and hasattr(self._ai_client, "read_image_text"):
+            parsed = await parser.parse_with_ocr(path, filename, self._ai_client)
+        else:
+            parsed = parser.parse(path, filename)
         draft_chunks = self._chunker.chunk(parsed)
         if not draft_chunks:
             logger.warning("File ingestion found no chunks document_id=%s extension=%s namespace=%s", document_id, _file_extension(filename), namespace)
@@ -257,6 +268,7 @@ class FileIngestionService:
                 id=f"batch:{chunk.id}", namespace=namespace, source_id=source.id,
                 document_id=document.id, version_id=version.id, chunk_id=chunk.id,
                 content=chunk.content, locator=chunk.locator, knowledge=knowledge,
+                claim_status="CONFIRMED" if self._auto_confirm_file_claims else "PROPOSED",
             )
             if self._learning_repository:
                 batch = await self._learning_repository.save_batch(batch)
@@ -389,15 +401,18 @@ class FileIngestionService:
                 if existing_claim is None:
                     stored_claim = await self._claim_repository.create(resolved.claim)
                     claim_id = stored_claim.id
-                    if stored_claim.status == ClaimStatus.PROPOSED:
+                    if stored_claim.status in {ClaimStatus.PROPOSED, ClaimStatus.CONFIRMED}:
                         claims_created += 1
                     else:
                         # A prior decision keeps its stable claim ID and status on reupload.
                         claims_reused += 1
                 else:
+                    stored_claim = existing_claim
                     claim_id = existing_claim.id
                     claims_reused += 1
                 await self._claim_repository.add_evidence(resolved.evidence.model_copy(update={"claim_id": claim_id}))
+                if self._auto_confirm_file_claims and stored_claim.status == ClaimStatus.PROPOSED:
+                    await self._claim_repository.confirm_unreviewed_upload_claim(claim_id)
                 evidence_created += 1
 
         await self._document_repository.mark_document_current(document.id, next_version, content_hash, now, version.id)
@@ -414,6 +429,7 @@ class FileIngestionService:
             claims_rejected=claims_rejected,
             unresolved_terms=sorted(set(unresolved_terms)),
             entity_resolutions=entity_resolutions,
+            auto_confirmed=self._auto_confirm_file_claims,
         )
         logger.info(
             "File ingestion completed document_id=%s version_id=%s namespace=%s chunks=%d entities_created=%d entities_reused=%d claims_created=%d claims_reused=%d evidence_created=%d claims_rejected=%d unresolved_terms=%d",
@@ -480,7 +496,7 @@ class FileIngestionService:
             object_value=extracted.object_value,
             scope_entity_id=scope_entity.id if scope_entity is not None else None,
             confidence=extracted.confidence,
-            status=ClaimStatus.PROPOSED,
+            status=ClaimStatus.CONFIRMED if self._auto_confirm_file_claims else ClaimStatus.PROPOSED,
             created_at=now,
             updated_at=now,
         )

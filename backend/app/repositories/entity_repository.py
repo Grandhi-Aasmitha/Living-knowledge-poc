@@ -94,6 +94,18 @@ class EntityRepository:
             records = await result.data()
         return [_entity_from_node(record["entity"]) for record in records]
 
+    async def list_active_in_namespace(self, namespace: str) -> list[Entity]:
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (entity:Entity {namespace: $namespace, status: 'ACTIVE'})
+                RETURN entity ORDER BY entity.canonical_name, entity.id
+                """,
+                namespace=namespace,
+            )
+            records = await result.data()
+        return [_entity_from_node(record["entity"]) for record in records]
+
     async def add_alias(self, entity_id: str, alias: str, mention_id: str | None = None, reason: str | None = None) -> Entity:
         async with self._client.session() as session:
             return await session.execute_write(self.add_alias_in_transaction, entity_id, alias, mention_id, reason)

@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     max_upload_size_mb: int = 10
     max_chunk_chars: int = 6000
     max_chunks_per_document: int = 20
+    auto_confirm_file_claims: bool = True
+    extraction_audit_enabled: bool = True
+    pdf_ocr_enabled: bool = True
     entity_resolution_auto_match_threshold: float = 0.9
     entity_resolution_max_candidates: int = 5
     assistant_max_claims: int = 25

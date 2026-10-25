@@ -16,6 +16,7 @@ async def ensure_schema(client: Neo4jClient) -> None:
         "CREATE CONSTRAINT entity_mention_id_unique IF NOT EXISTS FOR (n:EntityMention) REQUIRE n.id IS UNIQUE",
         "CREATE CONSTRAINT alias_binding_id_unique IF NOT EXISTS FOR (n:AliasBinding) REQUIRE n.id IS UNIQUE",
         "CREATE CONSTRAINT claim_review_id_unique IF NOT EXISTS FOR (n:ClaimReview) REQUIRE n.id IS UNIQUE",
+        "CREATE CONSTRAINT entity_merge_review_id_unique IF NOT EXISTS FOR (n:EntityMergeReview) REQUIRE n.id IS UNIQUE",
         "CREATE INDEX entity_namespace IF NOT EXISTS FOR (n:Entity) ON (n.namespace)",
         "CREATE INDEX entity_mention_namespace_status IF NOT EXISTS FOR (n:EntityMention) ON (n.namespace, n.status)",
     ]

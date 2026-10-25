@@ -154,7 +154,7 @@ export function ClaimReview({ apiRoot, namespace, onNamespaceChange, refreshVers
     <section className="status-card review-card" aria-labelledby="claim-review-title">
       <p className="eyebrow">Human review</p>
       <h2 id="claim-review-title">Review uploaded claims</h2>
-      <p className="muted">Uploaded facts start as proposed. Check the source text before confirming or rejecting a relationship.</p>
+      <p className="muted">Proposed uploaded facts appear here for review. Automatically confirmed uploads do not enter this queue.</p>
       <label className="review-namespace">Team namespace
         <input value={namespace} onChange={(event) => onNamespaceChange(event.target.value)} disabled={busy} />
       </label>

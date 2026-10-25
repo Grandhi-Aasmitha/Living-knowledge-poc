@@ -91,3 +91,41 @@ def test_knowledge_extractor_drops_malformed_ownership_claims() -> None:
     assert len(result.claims) == 1
     assert result.claims[0].subject == "team"
     assert result.claims[0].object_entity == "service"
+
+
+def test_extraction_audit_merges_missing_fact_without_duplicating_entities() -> None:
+    class AuditClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def generate_structured(self, prompt: str, response_model: type[T]) -> T:
+            self.calls += 1
+            if self.calls == 1:
+                return response_model.model_validate({
+                    "entities": [
+                        {"temporary_id": "svc", "entity_type": "SERVICE", "name": "Dispatch Service"},
+                        {"temporary_id": "topic", "entity_type": "TOPIC", "name": "Intent Topic"},
+                    ],
+                    "claims": [{"subject": "svc", "predicate": "PUBLISHES_TO", "object_entity": "topic", "confidence": 0.9, "evidence_text": "Dispatch Service publishes to Intent Topic."}],
+                })
+            assert "First extraction" in prompt
+            return response_model.model_validate({
+                "entities": [
+                    {"temporary_id": "another_svc", "entity_type": "SERVICE", "name": "Dispatch Service"},
+                    {"temporary_id": "db", "entity_type": "DATABASE", "name": "Intent Database"},
+                ],
+                "claims": [{"subject": "another_svc", "predicate": "WRITES_TO", "object_entity": "db", "confidence": 0.9, "evidence_text": "Dispatch Service writes to Intent Database."}],
+            })
+
+    client = AuditClient()
+    chunk = SourceChunk(
+        id="chunk-audit", version_id="version-audit", sequence=1, heading_path=[],
+        content="Dispatch Service publishes to Intent Topic. Dispatch Service writes to Intent Database.",
+        locator=None, content_hash="hash",
+    )
+    result = run(KnowledgeExtractor(client, audit_enabled=True).extract(chunk, "trial"))
+
+    assert client.calls == 2
+    assert len(result.entities) == 3
+    assert len(result.claims) == 2
+    assert result.claims[1].subject == "svc"

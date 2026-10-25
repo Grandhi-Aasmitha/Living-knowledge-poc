@@ -106,7 +106,7 @@ async def cleanup(client: Neo4jClient) -> None:
         await session.run("MATCH (entity:Entity {id: 'test:service:aggregator'}) DETACH DELETE entity")
 
 
-async def build_service(client: Neo4jClient, tmp_path: Path, ai_client: FakeStructuredAIClient) -> FileIngestionService:
+async def build_service(client: Neo4jClient, tmp_path: Path, ai_client: FakeStructuredAIClient, auto_confirm_file_claims: bool = False) -> FileIngestionService:
     upload_dir = tmp_path / "uploads"
     return FileIngestionService(
         ai_client=ai_client,
@@ -118,6 +118,7 @@ async def build_service(client: Neo4jClient, tmp_path: Path, ai_client: FakeStru
         max_upload_size_mb=10,
         max_chunk_chars=6000,
         max_chunks_per_document=20,
+        auto_confirm_file_claims=auto_confirm_file_claims,
     )
 
 
@@ -130,6 +131,32 @@ The Ingestion Service publishes to the Transformed Price Topic.
 
 The Aggregator Service consumes the Transformed Price Topic.
 {extra}""".encode("utf-8")
+
+
+def test_auto_confirmed_upload_keeps_extracted_confidence_and_evidence(tmp_path: Path) -> None:
+    async def scenario() -> None:
+        client = await make_client()
+        try:
+            await cleanup(client)
+            service = await build_service(client, tmp_path, FakeStructuredAIClient([extraction_payload()]), auto_confirm_file_claims=True)
+            result = await service.ingest(demo_content(), "phase4-demo.md", namespace="test")
+            assert result.auto_confirmed is True
+            assert result.claims_created == 2
+            async with client.session() as session:
+                records = await (await session.run(
+                    """
+                    MATCH (claim:Claim)-[:SUPPORTED_BY]->(evidence:Evidence)-[:FROM_CHUNK]->(:SourceChunk)<-[:HAS_CHUNK]-(:SourceVersion)<-[:HAS_VERSION]-(:SourceDocument {namespace: 'test', filename: 'phase4-demo.md'})
+                    RETURN DISTINCT claim.status AS status, claim.confidence AS confidence, evidence.is_current AS current
+                    """
+                )).data()
+            assert {record["status"] for record in records} == {"CONFIRMED"}
+            assert sorted(record["confidence"] for record in records) == [0.91, 0.92]
+            assert all(record["current"] for record in records)
+        finally:
+            await cleanup(client)
+            await client.close()
+
+    run(scenario())
 
 
 def test_file_ingestion_versioning_duplicate_detection_and_provenance(tmp_path: Path) -> None:

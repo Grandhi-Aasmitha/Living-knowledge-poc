@@ -1,15 +1,18 @@
 from pathlib import Path
+from io import BytesIO
 from typing import Protocol
 
+from PIL import Image
 from docx import Document as DocxDocument
 from pptx import Presentation
 from pypdf import PdfReader
 
+from app.ai.client import AIProviderError
 from app.documents.models import DocumentSection, ParsedDocument
 
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".pptx", ".txt", ".md"}
-NO_EXTRACTABLE_TEXT_MESSAGE = "No extractable text found. Scanned/image-only PDFs are not supported in Phase 4."
+NO_EXTRACTABLE_TEXT_MESSAGE = "No extractable text found in the PDF. Enable Azure image OCR for scanned pages."
 DOCUMENT_PARSE_ERROR_MESSAGE = "Uploaded document could not be parsed. Verify the file is not corrupt and matches its extension."
 
 
@@ -62,6 +65,36 @@ class PdfParser:
                 if text:
                     sections.append(DocumentSection(heading_path=[f"Page {index}"], content=text, locator=f"Page {index}"))
         except NoExtractableTextError:
+            raise
+        except Exception as error:
+            raise _document_parse_error(error) from error
+        if not sections:
+            raise NoExtractableTextError(NO_EXTRACTABLE_TEXT_MESSAGE)
+        return ParsedDocument(title=_document_title(original_filename), sections=sections)
+
+    async def parse_with_ocr(self, file_path: Path, original_filename: str, ocr_client: object, max_pages: int = 20) -> ParsedDocument:
+        try:
+            reader = PdfReader(str(file_path))
+            if len(reader.pages) > max_pages:
+                raise DocumentParseError(f"Scanned PDF exceeds the {max_pages}-page OCR limit.")
+            sections: list[DocumentSection] = []
+            for index, page in enumerate(reader.pages, start=1):
+                text = _clean_lines(page.extract_text() or "")
+                if not text:
+                    page_parts: list[str] = []
+                    for image_file in list(page.images)[:4]:
+                        with Image.open(BytesIO(image_file.data)) as image:
+                            image = image.convert("RGB")
+                            image.thumbnail((2048, 2048))
+                            buffer = BytesIO()
+                            image.save(buffer, format="PNG")
+                        recognized = _clean_lines(await ocr_client.read_image_text(buffer.getvalue()))
+                        if recognized:
+                            page_parts.append(recognized)
+                    text = _clean_lines("\n".join(page_parts))
+                if text:
+                    sections.append(DocumentSection(heading_path=[f"Page {index}"], content=text, locator=f"Page {index}"))
+        except (NoExtractableTextError, DocumentParseError, AIProviderError):
             raise
         except Exception as error:
             raise _document_parse_error(error) from error
