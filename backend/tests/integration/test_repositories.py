@@ -243,8 +243,12 @@ def test_knowledge_gap_creation_and_list_open_works() -> None:
         )
 
         gaps = await gap_repository.list_open()
+        scoped_gaps = await gap_repository.list_open(namespace="test")
+        other_gaps = await gap_repository.list_open(namespace="another-namespace")
 
         assert gap.id in {item.id for item in gaps}
+        assert gap.id in {item.id for item in scoped_gaps}
+        assert gap.id not in {item.id for item in other_gaps}
 
     run_with_client(body)
 

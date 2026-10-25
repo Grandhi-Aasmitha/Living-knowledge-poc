@@ -57,11 +57,12 @@ type AssistantResponse = {
 
 type KnowledgeAssistantProps = {
   apiRoot: string;
+  namespace: string;
+  onNamespaceChange: (namespace: string) => void;
 };
 
-export function KnowledgeAssistant({ apiRoot }: KnowledgeAssistantProps) {
+export function KnowledgeAssistant({ apiRoot, namespace, onNamespaceChange }: KnowledgeAssistantProps) {
   const [question, setQuestion] = useState('');
-  const [namespace, setNamespace] = useState('tstvs');
   const [response, setResponse] = useState<AssistantResponse | null>(null);
   const [message, setMessage] = useState('');
   const [isAsking, setIsAsking] = useState(false);
@@ -119,7 +120,7 @@ export function KnowledgeAssistant({ apiRoot }: KnowledgeAssistantProps) {
           rows={3}
         />
         <label htmlFor="assistant-namespace">Namespace</label>
-        <input id="assistant-namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+        <input id="assistant-namespace" value={namespace} onChange={(event) => onNamespaceChange(event.target.value)} />
         <button disabled={isAsking || question.trim() === '' || namespace.trim() === ''} type="submit">
           {isAsking ? 'Asking...' : 'Ask'}
         </button>

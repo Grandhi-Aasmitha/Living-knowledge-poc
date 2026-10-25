@@ -64,8 +64,7 @@ type GraphResponse = {
   nodes: GraphNode[];
 };
 
-export function ConflictReview() {
-  const [namespace, setNamespace] = useState('tstvs');
+export function ConflictReview({ namespace, onNamespaceChange }: { namespace: string; onNamespaceChange: (namespace: string) => void }) {
   const [conflicts, setConflicts] = useState<ConflictSummary[]>([]);
   const [selectedConflict, setSelectedConflict] = useState<ConflictDetail | null>(null);
   const [scanResult, setScanResult] = useState<ConflictDetectionResult | null>(null);
@@ -79,6 +78,11 @@ export function ConflictReview() {
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
 
   async function loadConflicts() {
+    if (namespace.trim() === '') {
+      setConflicts([]);
+      setSelectedConflict(null);
+      return;
+    }
     setIsLoading(true);
     setMessage('');
     try {
@@ -100,6 +104,10 @@ export function ConflictReview() {
   }
 
   async function loadGraphNodes() {
+    if (namespace.trim() === '') {
+      setGraphNodes([]);
+      return;
+    }
     try {
       const response = await fetch(`${API_ROOT}/api/graph?namespace=${encodeURIComponent(namespace)}&max_nodes=500`);
       if (!response.ok) {
@@ -200,7 +208,7 @@ export function ConflictReview() {
   useEffect(() => {
     void loadConflicts();
     void loadGraphNodes();
-  }, []);
+  }, [namespace]);
 
   const teamOptions = graphNodes.filter((node) => node.entity_type === 'TEAM');
   const objectOptions = graphNodes.filter((node) => node.entity_type !== 'TEAM');
@@ -212,7 +220,7 @@ export function ConflictReview() {
       <div className="graph-filters">
         <label>
           Namespace
-          <input value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+          <input value={namespace} onChange={(event) => onNamespaceChange(event.target.value)} />
         </label>
         <button type="button" onClick={() => void loadConflicts()} disabled={isLoading || namespace.trim() === ''}>
           Reload Conflicts

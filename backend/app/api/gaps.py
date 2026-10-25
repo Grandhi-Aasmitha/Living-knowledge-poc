@@ -12,8 +12,11 @@ router = APIRouter(prefix="/api/gaps", tags=["gaps"])
 
 
 @router.get("", response_model=list[KnowledgeGap])
-async def list_open_gaps(client: Neo4jClient = Depends(get_neo4j_client)) -> list[KnowledgeGap]:
-    return await GapRepository(client).list_open()
+async def list_open_gaps(
+    namespace: str | None = Query(default=None, min_length=1),
+    client: Neo4jClient = Depends(get_neo4j_client),
+) -> list[KnowledgeGap]:
+    return await GapRepository(client).list_open(namespace=namespace.strip() if namespace else None)
 
 
 @router.post("/detect", response_model=GapDetectionResult)

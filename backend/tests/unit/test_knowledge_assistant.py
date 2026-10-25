@@ -122,6 +122,31 @@ def test_confirmed_answer_builds_trusted_citation_metadata() -> None:
     assert response.citations[0].excerpt == "TSTVS Team"
 
 
+def test_unresolved_second_name_keeps_evidence_for_a_matched_entity() -> None:
+    class PartiallyMatchedRepository(FakeRepository):
+        async def resolve_entities(self, names: list[str], namespace: str) -> list[EntityResolution]:
+            return [
+                EntityResolution(
+                    requested_name=name,
+                    matches=[MatchedEntity(id="entity:one", label=name, entity_type="SERVICE", namespace=namespace)] if name == "Scheduler Service" else [],
+                )
+                for name in names
+            ]
+
+    generator = FakeGenerator(AnswerDraft(
+        answer="TSTVS Team owns Scheduler Service.", insufficient_knowledge=False,
+        cited_claim_ids=["claim:one"], cited_evidence_ids=["evidence:one"],
+    ))
+    assistant = service(PartiallyMatchedRepository([claim()]), generator)
+    assistant._query_planner = FakePlanner(KnowledgeQueryPlan(
+        entity_names=["Scheduler Service", "Unknown System"], predicates=["OWNS"], direction=QueryDirection.INCOMING,
+    ))
+
+    response = run(assistant.ask("Who owns Scheduler Service and Unknown System?", "tstvs"))
+
+    assert response.citations[0].claim_id == "claim:one"
+
+
 def test_proposed_answer_status_is_proposed() -> None:
     generator = FakeGenerator(AnswerDraft(answer="Proposed knowledge says it is owned.", insufficient_knowledge=False, cited_claim_ids=["claim:one"], cited_evidence_ids=["evidence:one"]))
 

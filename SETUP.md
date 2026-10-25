@@ -2,7 +2,7 @@
 
 This guide runs the Living Knowledge POC locally: Neo4j stores knowledge, FastAPI serves the API, and React/Vite provides the UI. Run the backend and frontend in separate terminals.
 
-This is a development POC, not a production deployment. Write endpoints have no authentication. Keep the services private; the supplied Compose file publishes Neo4j ports on the host, so use an appropriate local firewall and do not expose them to untrusted networks. Uploaded text and questions may be sent to your selected AI provider; use documents approved for that provider.
+This is a development POC, not a production deployment. Set a shared `APP_PASSWORD` for the knowledge API and keep services private. The supplied Compose file publishes Neo4j ports on the host, so use an appropriate local firewall and do not expose them to untrusted networks. Uploaded text and questions may be sent to your selected AI provider; use documents approved for that provider.
 
 ## 1. Prerequisites
 
@@ -57,6 +57,7 @@ NEO4J_USERNAME=neo4j
 NEO4J_PASSWORD=replace-with-your-local-password
 NEO4J_DATABASE=neo4j
 FRONTEND_ORIGIN=http://localhost:5173
+APP_PASSWORD=replace-with-a-separate-strong-password
 ```
 
 Keep the remaining template settings unless you need to customize them. `.env` is ignored by Git; never commit credentials. The backend reads this root file regardless of the terminal's working directory. Environment variables already exported in the shell take precedence, so check them if settings seem unexpected.
@@ -181,23 +182,23 @@ Open a new terminal at the repository root:
 ```sh
 cd frontend
 npm ci
-npm run dev -- --host 127.0.0.1 --port 5173 --strictPort
+npm run dev -- --host localhost --port 5173 --strictPort
 ```
 
 Leave it running and open [the application](http://localhost:5173).
 
-The UI calls `http://localhost:8000` by default. If you change the backend address, create an ignored `frontend/.env.local` file containing:
+The UI calls its own `/api` path, and Vite forwards it to the backend. If you change the backend address, create an ignored `frontend/.env.local` file containing:
 
 ```dotenv
-VITE_API_ROOT=http://localhost:8001
+VITE_PROXY_TARGET=http://127.0.0.1:8001
 ```
 
 Restart Vite after changing that file. If you change the UI address or port, update `FRONTEND_ORIGIN` in the root `.env` to the **exact browser origin**, then restart the backend. `http://localhost:5173` and `http://127.0.0.1:5173` are different origins; the default configuration expects you to open the `localhost` URL.
 
 ## 8. Try the team-learning workflow
 
-1. Check that Backend and Neo4j show **UP** in the UI.
-2. Under **Learn from a document**, select a PDF, DOCX, PPTX, TXT, or Markdown file and a team namespace, such as `tstvs`. Click **Upload and learn**. The default file limit is 10 MB; documents must contain extractable text (there is no OCR step).
+1. Sign in with `APP_PASSWORD` from the ignored root `.env`. Check that Backend and Neo4j show **UP** in the UI.
+2. Choose the **Active namespace**. Under **Learn from a document**, select one or more PDF, DOCX, PPTX, TXT, or Markdown files, or select a folder, then click **Upload and learn**. Each file goes to the active namespace. Choose another namespace before uploading another folder. The default per-file limit is 10 MB; documents must contain extractable text (there is no OCR step).
 3. Read the learning report for new entities, recognized names, learned aliases, and unresolved terms.
 4. In **Questions for the team**, choose the correct existing entity or create a separate entity, explain the decision, and apply it. The decision persists in Neo4j and applies supported relationships that were waiting for that identity.
 5. In **Review uploaded claims**, use the same namespace. Select a proposed claim, read its current file evidence, then enter your name and a reason to **Confirm** or **Reject** it. The decision and reason appear under **Recorded decisions** in that section; a reviewed claim can be reopened if the decision needs correction. This is separate from resolving an entity name under **Questions for the team**.

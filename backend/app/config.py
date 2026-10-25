@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     neo4j_password: str
     neo4j_database: str
     frontend_origin: str
+    app_password: SecretStr | None = None
     ai_provider: str = "tabnine_cli"
     tabnine_cli_path: str = "tabnine"
     tabnine_timeout_seconds: int = 60

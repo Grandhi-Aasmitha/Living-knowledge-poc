@@ -1,4 +1,4 @@
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react';
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 
 import { ConflictReview } from './components/ConflictReview';
 import { GraphExplorer } from './components/GraphExplorer';
@@ -10,6 +10,7 @@ import { API_ROOT } from './config';
 
 type Neo4jStatus = 'Checking...' | 'UP' | 'DOWN' | 'UNKNOWN';
 type BackendStatus = 'Checking...' | 'UP' | 'DOWN';
+type AuthSession = { required: boolean; authenticated: boolean };
 
 type HealthResponse = {
   status: 'UP' | 'DEGRADED';
@@ -65,6 +66,9 @@ const GAPS_URL = `${API_ROOT}/api/gaps`;
 const SOURCES_URL = `${API_ROOT}/api/sources/files`;
 
 export default function App() {
+  const [auth, setAuth] = useState<AuthSession | null>(null);
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginMessage, setLoginMessage] = useState('');
   const [backendStatus, setBackendStatus] = useState<BackendStatus>('Checking...');
   const [neo4jStatus, setNeo4jStatus] = useState<Neo4jStatus>('Checking...');
   const [gaps, setGaps] = useState<KnowledgeGap[]>([]);
@@ -72,8 +76,9 @@ export default function App() {
   const [answer, setAnswer] = useState('');
   const [message, setMessage] = useState('');
   const [isBusy, setIsBusy] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [namespace, setNamespace] = useState('tstvs');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [namespace, setNamespace] = useState(() => localStorage.getItem('living-knowledge-namespace') || 'tstvs');
   const [ingestionMessage, setIngestionMessage] = useState('');
   const [lastIngestion, setLastIngestion] = useState<{ result: IngestionResponse; filename: string } | null>(null);
   const [graphRevision, setGraphRevision] = useState(0);
@@ -84,8 +89,12 @@ export default function App() {
   const [isDetecting, setIsDetecting] = useState(false);
 
   async function loadGaps() {
+    if (namespace.trim() === '') {
+      setGaps([]);
+      return;
+    }
     try {
-      const response = await fetch(GAPS_URL);
+      const response = await fetch(`${GAPS_URL}?namespace=${encodeURIComponent(namespace.trim())}`);
       if (!response.ok) {
         setMessage('Open gaps are unavailable.');
         return;
@@ -103,7 +112,7 @@ export default function App() {
     setDetectionResult(null);
 
     try {
-      const response = await fetch(`${GAPS_URL}/detect?namespace=tstvs`, { method: 'POST' });
+      const response = await fetch(`${GAPS_URL}/detect?namespace=${encodeURIComponent(namespace.trim())}`, { method: 'POST' });
       if (!response.ok) {
         setMessage('Knowledge scan failed.');
         return;
@@ -130,6 +139,15 @@ export default function App() {
   }
 
   useEffect(() => {
+    async function loadSession() {
+      try {
+        const response = await fetch(`${API_ROOT}/api/auth/session`);
+        if (!response.ok) throw new Error('Session unavailable');
+        setAuth((await response.json()) as AuthSession);
+      } catch {
+        setLoginMessage('Could not connect to the backend. Start the backend and reload this page.');
+      }
+    }
     async function loadHealth() {
       try {
         const response = await fetch(HEALTH_URL);
@@ -149,10 +167,47 @@ export default function App() {
       }
     }
 
+    void loadSession();
     void loadHealth();
-    void loadGaps();
-    void loadDocuments();
   }, []);
+
+  useEffect(() => {
+    if (auth?.authenticated) folderInputRef.current?.setAttribute('webkitdirectory', '');
+  }, [auth?.authenticated]);
+
+  useEffect(() => {
+    localStorage.setItem('living-knowledge-namespace', namespace);
+    if (auth?.authenticated) {
+      void loadGaps();
+      void loadDocuments();
+    }
+  }, [namespace, auth?.authenticated]);
+
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoginMessage('');
+    try {
+      const response = await fetch(`${API_ROOT}/api/auth/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: loginPassword }),
+      });
+      if (!response.ok) {
+        setLoginMessage('Incorrect password.');
+        return;
+      }
+      setAuth((await response.json()) as AuthSession);
+      setLoginPassword('');
+    } catch {
+      setLoginMessage('Could not connect to the backend.');
+    }
+  }
+
+  async function signOut() {
+    await fetch(`${API_ROOT}/api/auth/logout`, { method: 'POST' });
+    setAuth({ required: true, authenticated: false });
+    setGaps([]);
+    setDocuments([]);
+  }
 
   async function startCuration(gapId: string) {
     setIsBusy(true);
@@ -218,8 +273,8 @@ export default function App() {
     }
   }
 
-  function selectFile(event: ChangeEvent<HTMLInputElement>) {
-    setSelectedFile(event.target.files?.[0] ?? null);
+  function selectFiles(event: ChangeEvent<HTMLInputElement>) {
+    setSelectedFiles(Array.from(event.target.files ?? []));
     setForceReprocess(false);
     setIngestionMessage('');
     setLastIngestion(null);
@@ -227,7 +282,13 @@ export default function App() {
 
   async function uploadDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (selectedFile === null || namespace.trim() === '') {
+    if (selectedFiles.length === 0 || namespace.trim() === '') {
+      return;
+    }
+
+    const filenames = selectedFiles.map((file) => file.name.toLocaleLowerCase());
+    if (new Set(filenames).size !== filenames.length) {
+      setIngestionMessage('Two selected files have the same name. Upload them separately or rename one file.');
       return;
     }
 
@@ -235,39 +296,33 @@ export default function App() {
     setIngestionMessage('');
     setLastIngestion(null);
 
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('namespace', namespace.trim());
-    formData.append('force', String(forceReprocess));
-
     try {
-      const response = await fetch(SOURCES_URL, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!response.ok) {
-        if (response.status === 503) {
-          setIngestionMessage('Document ingestion is unavailable. Configure an AI provider or local rules mode.');
-        } else if (response.status === 413) {
-          setIngestionMessage('The selected file exceeds the upload size limit.');
-        } else if (response.status === 422) {
-          const error = await response.json() as { detail?: unknown };
-          setIngestionMessage(typeof error.detail === 'string' ? error.detail : 'The document could not be processed.');
-        } else {
-          setIngestionMessage('Document ingestion failed.');
+      let completed = 0;
+      let unchanged = 0;
+      const failures: string[] = [];
+      for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('namespace', namespace.trim());
+        formData.append('force', String(forceReprocess));
+        try {
+          const response = await fetch(SOURCES_URL, { method: 'POST', body: formData });
+          if (!response.ok) {
+            const error = response.status === 422 ? await response.json() as { detail?: unknown } : null;
+            const detail = typeof error?.detail === 'string' ? error.detail : response.status === 413 ? 'File exceeds the upload size limit' : response.status === 503 ? 'AI provider is unavailable' : `HTTP ${response.status}`;
+            failures.push(`${file.name}: ${detail}`);
+            continue;
+          }
+          const result = (await response.json()) as IngestionResponse;
+          setLastIngestion({ result, filename: file.name });
+          if (result.status === 'UNCHANGED') unchanged += 1;
+          else completed += 1;
+        } catch {
+          failures.push(`${file.name}: upload failed`);
         }
-        return;
       }
-
-      const result = (await response.json()) as IngestionResponse;
-      setLastIngestion({ result, filename: selectedFile.name });
-      if (result.status === 'UNCHANGED') {
-        setIngestionMessage('This document is already part of the team’s knowledge.');
-      } else {
-        setIngestionMessage('Learning complete. Review the new knowledge and uncertain terms below.');
-        setGraphRevision((revision) => revision + 1);
-      }
+      setIngestionMessage(`${completed} learned, ${unchanged} unchanged, ${failures.length} failed.${failures.length ? ` ${failures.join('; ')}` : ''}`);
+      if (completed > 0) setGraphRevision((revision) => revision + 1);
       await loadDocuments();
     } catch {
       setIngestionMessage('Document ingestion failed.');
@@ -276,11 +331,30 @@ export default function App() {
     }
   }
 
+  if (auth === null || !auth.authenticated) {
+    return (
+      <main className="shell">
+        <section className="status-card" aria-labelledby="login-title">
+          <h1 id="login-title">Living Knowledge POC</h1>
+          {auth === null ? <p>Connecting to backend…</p> : (
+            <form className="answer-form" onSubmit={(event) => void signIn(event)}>
+              <label htmlFor="shared-password">Shared password</label>
+              <input id="shared-password" type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} />
+              <button type="submit" disabled={loginPassword === ''}>Sign in</button>
+            </form>
+          )}
+          {loginMessage !== '' && <p className="message" role="alert">{loginMessage}</p>}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="shell">
       <section className="status-card" aria-labelledby="page-title">
         <p className="eyebrow">Living Knowledge</p>
         <h1 id="page-title">Living Knowledge POC</h1>
+        {auth.required && <button type="button" onClick={() => void signOut()}>Sign out</button>}
         <dl className="status-list">
           <div className="status-row">
             <dt>Backend</dt>
@@ -293,9 +367,16 @@ export default function App() {
         </dl>
       </section>
 
-      <KnowledgeAssistant apiRoot={API_ROOT} />
+      <section className="status-card" aria-label="Active namespace">
+        <label htmlFor="active-namespace">Active namespace</label>
+        <input id="active-namespace" list="known-namespaces" value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+        <datalist id="known-namespaces">{[...new Set(documents.map((document) => document.namespace))].map((name) => <option key={name} value={name} />)}</datalist>
+        <p className="muted">All knowledge screens use this namespace. Choose an existing namespace or enter a new one before uploading.</p>
+      </section>
 
-      <GraphExplorer apiRoot={API_ROOT} refreshVersion={graphRevision} />
+      <KnowledgeAssistant apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} />
+
+      <GraphExplorer apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} />
 
       <section className="status-card curator-card" aria-labelledby="ingestion-title">
         <p className="eyebrow">Grow team knowledge</p>
@@ -306,8 +387,11 @@ export default function App() {
         {ingestionMessage !== '' && <p className="message" role="status">{ingestionMessage}</p>}
 
         <form className="answer-form" onSubmit={(event) => void uploadDocument(event)}>
-          <label htmlFor="source-file">Source document</label>
-          <input id="source-file" type="file" accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFile} disabled={isUploading} />
+          <label htmlFor="source-file">Source documents</label>
+          <input id="source-file" type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFiles} disabled={isUploading} />
+          <label htmlFor="source-folder">Or select a folder of documents</label>
+          <input id="source-folder" ref={folderInputRef} type="file" multiple accept=".pdf,.docx,.pptx,.txt,.md" onChange={selectFiles} disabled={isUploading} />
+          <p className="muted">{selectedFiles.length} file(s) selected. Every selected file is uploaded to the active namespace. Select a different namespace for another folder.</p>
           <label htmlFor="namespace">Namespace</label>
           <input id="namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} disabled={isUploading} />
           <label className="inline-option">
@@ -315,7 +399,7 @@ export default function App() {
             Reprocess even if unchanged
           </label>
           <p className="muted">Use reprocess for earlier uploads or to reassess the document after a learning-policy change. It creates a new processing revision and preserves prior evidence.</p>
-          <button disabled={isUploading || selectedFile === null || namespace.trim() === ''} type="submit">
+          <button disabled={isUploading || selectedFiles.length === 0 || namespace.trim() === ''} type="submit">
             {isUploading ? 'Reading and connecting knowledge…' : 'Upload and learn'}
           </button>
         </form>
@@ -345,7 +429,7 @@ export default function App() {
       <section className="status-card curator-card" aria-labelledby="curator-title">
         <p className="eyebrow">Phase 6 Workflow</p>
         <h2 id="curator-title">Knowledge Curator</h2>
-        <button disabled={isDetecting} type="button" onClick={() => void detectMissingKnowledge()}>
+        <button disabled={isDetecting || namespace.trim() === ''} type="button" onClick={() => void detectMissingKnowledge()}>
           {isDetecting ? 'Scanning...' : 'Detect Missing Knowledge'}
         </button>
 
@@ -397,7 +481,7 @@ export default function App() {
 
       <ClarificationQueue apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} onKnowledgeUpdated={() => { setGraphRevision((revision) => revision + 1); void loadGaps(); }} />
 
-      <ConflictReview />
+      <ConflictReview namespace={namespace} onNamespaceChange={setNamespace} />
     </main>
   );
 }

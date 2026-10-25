@@ -71,6 +71,16 @@ def test_valid_entity_type_accepted(monkeypatch) -> None:
     assert response.status_code == 200
 
 
+def test_graph_ontology_lists_configured_types_and_predicates(monkeypatch) -> None:
+    client = make_client(monkeypatch)
+
+    response = client.get("/api/graph/ontology")
+
+    assert response.status_code == 200
+    assert "SERVICE" in response.json()["entity_types"]
+    assert "OWNS" in response.json()["predicates"]
+
+
 def test_invalid_entity_type_rejected(monkeypatch) -> None:
     client = make_client(monkeypatch)
 

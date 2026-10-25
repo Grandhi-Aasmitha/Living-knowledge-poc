@@ -2,13 +2,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.db.neo4j import Neo4jClient, get_neo4j_client
 from app.domain.enums import ClaimStatus
-from app.domain.ontology import get_allowed_entity_types
+from app.domain.ontology import get_allowed_entity_types, get_allowed_predicates
 from app.graph.models import ClaimProvenanceResponse, GraphResponse
 from app.repositories.graph_repository import GraphRepository
 
 
 router = APIRouter(prefix="/api/graph", tags=["graph"])
 DEFAULT_CLAIM_STATUSES = [ClaimStatus.CONFIRMED.value, ClaimStatus.PROPOSED.value]
+
+
+@router.get("/ontology")
+async def get_graph_ontology() -> dict[str, list[str]]:
+    return {
+        "entity_types": sorted(get_allowed_entity_types()),
+        "predicates": sorted(get_allowed_predicates()),
+    }
 
 
 def _split_query_values(values: list[str] | None) -> list[str]:

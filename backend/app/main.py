@@ -3,6 +3,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
@@ -12,6 +14,7 @@ from app.ai.answer_interpreter import AnswerInterpreter
 from app.ai.provider import build_structured_ai_client
 from app.ai.question_generator import QuestionGenerator
 from app.api.assistant import router as assistant_router
+from app.auth import COOKIE_NAME, LocalAuth, router as auth_router
 from app.api.claim_reviews import router as claim_reviews_router
 from app.api.conflicts import router as conflicts_router
 from app.api.curation import router as curation_router
@@ -143,6 +146,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
+    app.state.local_auth = LocalAuth(settings.app_password.get_secret_value() if settings.app_password else None)
+
+    @app.middleware("http")
+    async def protect_knowledge_api(request: Request, call_next):
+        path = request.url.path
+        if path.startswith("/api/") and not path.startswith("/api/auth/") and path != "/api/health" and request.method != "OPTIONS":
+            if not app.state.local_auth.authenticated(request.cookies.get(COOKIE_NAME)):
+                return JSONResponse({"detail": "Sign in required"}, status_code=401)
+            if app.state.local_auth.required and request.method not in {"GET", "HEAD"}:
+                origin = request.headers.get("origin")
+                own_origin = f"{request.url.scheme}://{request.url.netloc}"
+                if origin not in {settings.frontend_origin, own_origin}:
+                    return JSONResponse({"detail": "Invalid request origin"}, status_code=403)
+        return await call_next(request)
 
     app.add_middleware(
         CORSMiddleware,
@@ -153,6 +170,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health_router)
+    app.include_router(auth_router)
     app.include_router(entities_router)
     app.include_router(gaps_router)
     app.include_router(curation_router)

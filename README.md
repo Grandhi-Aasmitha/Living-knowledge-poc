@@ -16,7 +16,7 @@ Implemented phases:
 - Team learning: durable source observations, identity questions, human decisions, recovered claims, alias provenance, source-version reconciliation, and longitudinal integration checks.
 - Uploaded claim review: a namespace-scoped queue of proposed file claims with source evidence, human confirm/reject decisions, recorded reasons, and a way to reopen a decision.
 
-This POC is for local development/demo use only. Write-capable endpoints are intentionally unauthenticated for local iteration and must not be exposed on a public network without adding authentication and CSRF protection.
+This POC is for local development/demo use only. Set `APP_PASSWORD` in the ignored `.env` to protect the knowledge API with a shared password. The browser keeps the session in an HTTP-only, same-site cookie; write requests also check their origin. This is a shared local login, not individual accounts or a public deployment security model.
 
 For current macOS/Linux and Windows startup instructions, AI provider configuration, verification, and troubleshooting, see [SETUP.md](SETUP.md).
 
@@ -36,7 +36,7 @@ Copy the example environment file and set a local Neo4j password before starting
 Copy-Item .env.example .env
 ```
 
-Edit `.env` and replace `change-this-password` with a local password. The `.env` file is gitignored and must not be committed.
+Edit `.env` and replace `change-this-password` with a local password. Also set `APP_PASSWORD` to a separate strong shared password. The `.env` file is gitignored and must not be committed. Open the frontend and sign in with `APP_PASSWORD` before using a knowledge feature.
 
 If choosing Azure OpenAI instead of the default Tabnine CLI, also set:
 
@@ -139,7 +139,7 @@ After an upload, the UI shows a learning report with new and recognized entities
 
 `LearningBatch` preserves extracted proposals and source context; `EntityMention` preserves decisions and human reasons; `AliasBinding` reserves learned names and records their provenance. Human identity confirmation does not automatically confirm claims extracted from files. Source files are identified within a team namespace. Failed ingestion does not mark the file current; retries reuse saved proposals. Publishing a new version deactivates the prior version's evidence without deleting history. Current graph queries, gap/conflict scans, and assistant retrieval respect evidence activity; assistant retrieval also respects claim validity dates.
 
-The **Review uploaded claims** section lists proposed claims with current file evidence in the selected namespace. Select a claim to inspect its source excerpt and document version, then enter a reviewer name and reason to **Confirm** or **Reject** it. Decisions are recorded in Neo4j; reviewed claims can be reopened for another review. Confirmed claims appear as confirmed in the graph and can support a confirmed Assistant answer when no cited claim is proposed and no gap or conflict is open. Rejected claims are excluded from the default graph and Assistant retrieval. Reuploading the same rejected fact does not silently restore it. The local POC has no authentication, so reviewer names are self-reported.
+The **Review uploaded claims** section lists proposed claims with current file evidence in the selected namespace. Select a claim to inspect its source excerpt and document version, then enter a reviewer name and reason to **Confirm** or **Reject** it. Decisions are recorded in Neo4j; reviewed claims can be reopened for another review. Confirmed claims appear as confirmed in the graph and can support a confirmed Assistant answer when no cited claim is proposed and no gap or conflict is open. Rejected claims are excluded from the default graph and Assistant retrieval. Reuploading the same rejected fact does not silently restore it. The shared local password protects the API, but reviewer names are still self-reported because there are no individual accounts.
 
 Existing duplicate nodes are not silently merged. Alias conflicts require explicit duplicate reconciliation, which remains a separate future workflow. Older file documents without a namespace are treated as belonging to the original `tstvs` namespace. Legacy knowledge with no processing-status or evidence-activity field keeps its previous behavior until a new version is published.
 

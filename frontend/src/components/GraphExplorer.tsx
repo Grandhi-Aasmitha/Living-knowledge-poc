@@ -41,18 +41,19 @@ type SelectedEntity = GraphNode & {
 
 type GraphExplorerProps = {
   apiRoot: string;
+  namespace: string;
+  onNamespaceChange: (namespace: string) => void;
   refreshVersion?: number;
 };
 
-const COMMON_ENTITY_TYPES = ['SERVICE', 'TOPIC', 'TEAM', 'BUSINESS_CONCEPT', 'SYSTEM', 'API', 'DATABASE'];
 const STATUS_OPTIONS = ['CONFIRMED', 'PROPOSED'];
 
-export function GraphExplorer({ apiRoot, refreshVersion = 0 }: GraphExplorerProps) {
+export function GraphExplorer({ apiRoot, namespace, onNamespaceChange, refreshVersion = 0 }: GraphExplorerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<Core | null>(null);
-  const [namespace, setNamespace] = useState('tstvs');
   const [selectedStatuses, setSelectedStatuses] = useState<string[]>(STATUS_OPTIONS);
   const [entityType, setEntityType] = useState('');
+  const [entityTypes, setEntityTypes] = useState<string[]>([]);
   const [search, setSearch] = useState('');
   const [graph, setGraph] = useState<GraphResponse>({ nodes: [], edges: [], truncated: false });
   const [selectedEntity, setSelectedEntity] = useState<SelectedEntity | null>(null);
@@ -65,6 +66,21 @@ export function GraphExplorer({ apiRoot, refreshVersion = 0 }: GraphExplorerProp
   const nodeById = useMemo(() => new Map(graph.nodes.map((node) => [node.id, node])), [graph.nodes]);
 
   useEffect(() => {
+    async function loadOntology() {
+      try {
+        const response = await fetch(`${apiRoot}/api/graph/ontology`);
+        if (response.ok) {
+          const ontology = (await response.json()) as { entity_types: string[] };
+          setEntityTypes(ontology.entity_types);
+        }
+      } catch {
+        // The graph remains usable with its All filter while the API is unavailable.
+      }
+    }
+    void loadOntology();
+  }, [apiRoot]);
+
+  useEffect(() => {
     async function loadGraph() {
       setIsLoading(true);
       setError('');
@@ -72,7 +88,14 @@ export function GraphExplorer({ apiRoot, refreshVersion = 0 }: GraphExplorerProp
       setSelectedClaim(null);
       setClaimError('');
 
-      const params = new URLSearchParams({ namespace: namespace.trim() || 'tstvs' });
+      if (namespace.trim() === '') {
+        setGraph({ nodes: [], edges: [], truncated: false });
+        setError('Choose a namespace to load the graph.');
+        setIsLoading(false);
+        return;
+      }
+
+      const params = new URLSearchParams({ namespace: namespace.trim() });
       selectedStatuses.forEach((status) => params.append('statuses', status));
       if (entityType !== '') {
         params.append('entity_types', entityType);
@@ -258,7 +281,7 @@ export function GraphExplorer({ apiRoot, refreshVersion = 0 }: GraphExplorerProp
       <div className="graph-filters">
         <label>
           Namespace
-          <input value={namespace} onChange={(event) => setNamespace(event.target.value)} />
+          <input value={namespace} onChange={(event) => onNamespaceChange(event.target.value)} />
         </label>
         <fieldset>
           <legend>Claim status</legend>
@@ -278,7 +301,7 @@ export function GraphExplorer({ apiRoot, refreshVersion = 0 }: GraphExplorerProp
           Entity type
           <select value={entityType} onChange={(event) => setEntityType(event.target.value)}>
             <option value="">All</option>
-            {COMMON_ENTITY_TYPES.map((type) => (
+            {entityTypes.map((type) => (
               <option key={type} value={type}>
                 {type}
               </option>

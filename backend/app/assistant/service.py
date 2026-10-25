@@ -113,7 +113,7 @@ class KnowledgeAssistantService:
                 max_claims=self._max_claims,
                 max_evidence_per_claim=self._max_evidence_per_claim,
             )
-            if not missing else []
+            if entity_ids else []
         )
         terms = _search_terms(cleaned_question, plan.search_terms)
         candidate_ids = await self._repository.search_claim_ids(

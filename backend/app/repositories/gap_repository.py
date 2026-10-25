@@ -55,15 +55,17 @@ class GapRepository:
             return None
         return _gap_from_node(record["gap"])
 
-    async def list_open(self) -> list[KnowledgeGap]:
+    async def list_open(self, namespace: str | None = None) -> list[KnowledgeGap]:
         async with self._client.session() as session:
             result = await session.run(
                 """
-                MATCH (gap:KnowledgeGap {status: $status})
+                MATCH (gap:KnowledgeGap {status: $status})-[:ABOUT]->(entity:Entity)
+                WHERE $namespace IS NULL OR entity.namespace = $namespace
                 RETURN gap
                 ORDER BY gap.created_at, gap.id
                 """,
                 status=GapStatus.OPEN.value,
+                namespace=namespace,
             )
             records = await result.data()
 

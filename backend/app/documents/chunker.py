@@ -42,7 +42,7 @@ class DocumentChunker:
                 )
                 if len(chunks) > self._max_chunks_per_document:
                     raise ChunkLimitExceededError(
-                        f"Document exceeds the Phase 4 POC limit of {self._max_chunks_per_document} chunks."
+                        f"Document exceeds the configured limit of {self._max_chunks_per_document} chunks."
                     )
         return chunks
 
