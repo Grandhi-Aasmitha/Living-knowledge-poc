@@ -1,0 +1,6 @@
+Aster Field Operations - Returns Handbook
+Record date: 2026-09-16. Scope: the Aster field operations pilot.
+
+Aster Returns Service consumes Shipment Status Topic to determine the last known parcel state before a return is accepted. It writes accepted return records to Returns Ledger Database. Aster Customer Portal calls Aster Returns Service when a customer starts a return.
+
+A return can be started in the portal, but the return record is stored by Aster Returns Service. The handbook does not identify the owner of Returns Ledger Database.

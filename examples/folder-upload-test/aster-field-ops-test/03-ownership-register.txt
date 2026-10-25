@@ -1,0 +1,8 @@
+Aster Field Operations - Service Ownership Register
+Approved: 2026-09-15. Scope: the Aster field operations pilot.
+
+Aster Logistics Team is responsible for Aster Dispatch Service and Aster Routing Service. Operational questions about either service go to Aster Logistics Team.
+
+Aster Experience Team maintains Aster Tracking Service and Aster Customer Portal. The same team handles customer view incidents, while routing incidents stay with Aster Logistics Team.
+
+Aster Returns Team is responsible for Aster Returns Service. The register does not assign ownership of Route Plan Database or either topic; those ownership details are unknown in this test set.

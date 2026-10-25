@@ -1,0 +1,6 @@
+Aster Field Operations - Tracking and Customer View
+Record date: 2026-09-13. Scope: the Aster field operations pilot.
+
+Aster Tracking Service reads route plans from Route Plan Database. It publishes parcel movement updates to Shipment Status Topic. Aster Customer Portal consumes Shipment Status Topic to display the latest shipment state to customers.
+
+The portal does not write route plans. A tracking update may arrive after routing has finished, so the customer view and the stored route plan serve different purposes. This record does not say which team owns either service.

@@ -1,0 +1,8 @@
+Aster Field Operations - Dispatch and Routing
+Record date: 2026-09-12. Scope: the Aster field operations pilot.
+
+When a parcel is accepted, Aster Dispatch Service creates a shipment intent. It publishes each intent to Shipment Intent Topic. Aster Routing Service subscribes to Shipment Intent Topic and consumes those intents. Once it chooses a route, Aster Routing Service writes the route plan to Route Plan Database.
+
+The dispatch service does not choose the route. The routing service uses the shipment intent as its input. This distinction matters when diagnosing a missing route plan: check the topic delivery before inspecting Route Plan Database.
+
+This record describes the pilot workflow. It does not assign team ownership.
