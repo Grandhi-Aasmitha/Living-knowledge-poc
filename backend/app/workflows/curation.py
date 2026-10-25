@@ -41,6 +41,7 @@ class CurationState(TypedDict, total=False):
     resulting_entity_id: str
     resulting_claim_id: str
     status: WorkflowStatus
+    review_reason: str
     error: str
     _gap: dict[str, Any]
     _entity: dict[str, Any]
@@ -184,7 +185,9 @@ class CurationWorkflow:
         return "persist"
 
     async def _mark_needs_review(self, state: CurationState) -> CurationState:
-        return {**state, "status": "NEEDS_REVIEW"}
+        interpretation = AnswerInterpretation(**state["interpretation"])
+        reason = "ANSWER_UNCLEAR" if not interpretation.can_resolve else "ENTITY_TYPE_MISMATCH"
+        return {**state, "status": "NEEDS_REVIEW", "review_reason": reason}
 
     async def _build_claim_candidate(self, state: CurationState) -> CurationState:
         interpretation = AnswerInterpretation(**state["interpretation"])
@@ -261,7 +264,7 @@ class CurationWorkflow:
                     observed=observed, candidates=resolution.candidates, reason=resolution.reason, confidence=resolution.confidence,
                 ))
         if resolution is not None and resolution.needs_review:
-            return {**state, "status": "NEEDS_REVIEW"}
+            return {**state, "status": "NEEDS_REVIEW", "review_reason": "ENTITY_IDENTITY_REVIEW"}
         if entity is None:
             entity = await self._entity_repository.create(
                 Entity(
@@ -329,6 +332,7 @@ class CurationWorkflow:
             "workflow_id": result.get("workflow_id"),
             "gap_id": result.get("gap_id"),
             "status": result.get("status"),
+            "review_reason": result.get("review_reason"),
             "entity_id": result.get("resulting_entity_id"),
             "claim_id": result.get("resulting_claim_id"),
         }

@@ -172,6 +172,7 @@ def test_workflow_resume_with_unresolvable_answer_needs_review() -> None:
         await workflow.start("test-workflow-3", "test:gap")
         result = await workflow.answer("test-workflow-3", "I don't know")
         assert result["status"] == "NEEDS_REVIEW"
+        assert result["review_reason"] == "ANSWER_UNCLEAR"
         assert gaps.gaps["test:gap"].status == GapStatus.OPEN
         assert claims.claims == {}
         assert sources.sources == {}

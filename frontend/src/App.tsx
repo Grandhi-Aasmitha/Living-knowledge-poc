@@ -39,6 +39,7 @@ type SubmitAnswerResponse = {
   gap_id?: string;
   entity_id?: string;
   claim_id?: string;
+  review_reason?: 'ANSWER_UNCLEAR' | 'ENTITY_TYPE_MISMATCH' | 'ENTITY_IDENTITY_REVIEW';
 };
 
 type GapDetectionResult = {
@@ -232,7 +233,13 @@ export default function App() {
       });
 
       if (!response.ok) {
-        setMessage('Could not submit the answer.');
+        if (response.status === 404) {
+          setCuration(null);
+          setAnswer('');
+          setMessage('This question is no longer waiting for an answer. Select Resolve on the open gap to try again.');
+        } else {
+          setMessage(response.status === 502 ? 'The AI service could not interpret this answer. Please try again.' : 'Could not submit the answer. Please try again.');
+        }
         return;
       }
 
@@ -246,7 +253,15 @@ export default function App() {
         return;
       }
 
-      setMessage('The answer could not be converted into confirmed knowledge. The gap remains open.');
+      setCuration(null);
+      setAnswer('');
+      if (result.review_reason === 'ENTITY_IDENTITY_REVIEW') {
+        setMessage('The answer was saved, but the entity name needs review. Open Questions for the team below to choose the correct entity; the gap will then resolve.');
+      } else if (result.review_reason === 'ENTITY_TYPE_MISMATCH') {
+        setMessage('The answer named the wrong kind of entity for this gap. The gap remains open; select Resolve to try again with a team or service name as requested.');
+      } else {
+        setMessage('The answer did not identify a specific entity. The gap remains open; select Resolve to try again with the exact name requested.');
+      }
       await loadGaps();
     } catch {
       setMessage('Could not submit the answer.');
@@ -444,7 +459,7 @@ export default function App() {
               id="engineer-answer"
               value={answer}
               onChange={(event) => setAnswer(event.target.value)}
-              placeholder="Scheduler Service"
+              placeholder="Enter the specific name requested above"
             />
             <button disabled={isBusy || answer.trim() === ''} type="submit">
               Submit Answer

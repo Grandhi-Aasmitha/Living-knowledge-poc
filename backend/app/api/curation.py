@@ -35,6 +35,7 @@ class SubmitAnswerResponse(BaseModel):
     gap_id: str | None = None
     entity_id: str | None = None
     claim_id: str | None = None
+    review_reason: str | None = None
 
 
 def _get_workflow(request: Request) -> Any:
@@ -104,4 +105,5 @@ async def submit_answer(
         gap_id=result.get("gap_id"),
         entity_id=result.get("entity_id"),
         claim_id=result.get("claim_id"),
+        review_reason=result.get("review_reason"),
     )
