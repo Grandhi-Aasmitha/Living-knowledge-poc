@@ -51,16 +51,6 @@ type GapDetectionResult = {
   open_automatic_gaps: number;
 };
 
-type SourceDocument = {
-  id: string;
-  title: string;
-  filename: string;
-  namespace: string;
-  latest_version: number;
-  current_content_hash: string;
-  updated_at: string;
-};
-
 const HEALTH_URL = `${API_ROOT}/api/health`;
 const GAPS_URL = `${API_ROOT}/api/gaps`;
 const SOURCES_URL = `${API_ROOT}/api/sources/files`;
@@ -78,11 +68,10 @@ export default function App() {
   const [isBusy, setIsBusy] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const folderInputRef = useRef<HTMLInputElement>(null);
-  const [namespace, setNamespace] = useState(() => localStorage.getItem('living-knowledge-namespace') || 'tstvs');
+  const [namespace, setNamespace] = useState('');
   const [ingestionMessage, setIngestionMessage] = useState('');
   const [lastIngestion, setLastIngestion] = useState<{ result: IngestionResponse; filename: string } | null>(null);
   const [graphRevision, setGraphRevision] = useState(0);
-  const [documents, setDocuments] = useState<SourceDocument[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [forceReprocess, setForceReprocess] = useState(false);
   const [detectionResult, setDetectionResult] = useState<GapDetectionResult | null>(null);
@@ -126,18 +115,6 @@ export default function App() {
     }
   }
 
-  async function loadDocuments() {
-    try {
-      const response = await fetch(SOURCES_URL);
-      if (!response.ok) {
-        return;
-      }
-      setDocuments((await response.json()) as SourceDocument[]);
-    } catch {
-      // Keep document ingestion UI usable even when the list endpoint is temporarily unavailable.
-    }
-  }
-
   useEffect(() => {
     async function loadSession() {
       try {
@@ -176,10 +153,8 @@ export default function App() {
   }, [auth?.authenticated]);
 
   useEffect(() => {
-    localStorage.setItem('living-knowledge-namespace', namespace);
     if (auth?.authenticated) {
       void loadGaps();
-      void loadDocuments();
     }
   }, [namespace, auth?.authenticated]);
 
@@ -205,8 +180,15 @@ export default function App() {
   async function signOut() {
     await fetch(`${API_ROOT}/api/auth/logout`, { method: 'POST' });
     setAuth({ required: true, authenticated: false });
+    setNamespace('');
+    setSelectedFiles([]);
+    setLastIngestion(null);
+    setIngestionMessage('');
+    setDetectionResult(null);
+    setCuration(null);
+    setAnswer('');
+    setMessage('');
     setGaps([]);
-    setDocuments([]);
   }
 
   async function startCuration(gapId: string) {
@@ -331,7 +313,6 @@ export default function App() {
       }
       setIngestionMessage(`${completed} learned, ${unchanged} unchanged, ${failures.length} failed.${failures.length ? ` ${failures.join('; ')}` : ''}`);
       if (completed > 0) setGraphRevision((revision) => revision + 1);
-      await loadDocuments();
     } catch {
       setIngestionMessage('Document ingestion failed.');
     } finally {
@@ -377,9 +358,8 @@ export default function App() {
 
       <section className="status-card" aria-label="Active namespace">
         <label htmlFor="active-namespace">Active namespace</label>
-        <input id="active-namespace" list="known-namespaces" value={namespace} onChange={(event) => setNamespace(event.target.value)} />
-        <datalist id="known-namespaces">{[...new Set(documents.map((document) => document.namespace))].map((name) => <option key={name} value={name} />)}</datalist>
-        <p className="muted">All knowledge screens use this namespace. Choose an existing namespace or enter a new one before uploading.</p>
+        <input id="active-namespace" value={namespace} onChange={(event) => setNamespace(event.target.value)} placeholder="Enter a namespace" />
+        <p className="muted">Enter the namespace you want to use. Uploads and questions use this name; selecting a folder can fill it for you.</p>
       </section>
 
       <KnowledgeAssistant apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} />
