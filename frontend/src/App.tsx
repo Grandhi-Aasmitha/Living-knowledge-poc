@@ -3,6 +3,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react';
 import { ConflictReview } from './components/ConflictReview';
 import { GraphExplorer } from './components/GraphExplorer';
 import { KnowledgeAssistant } from './components/KnowledgeAssistant';
+import { AssessmentChat } from './components/AssessmentChat';
 import { IngestionResponse, LearningReport } from './components/LearningReport';
 import { ClarificationQueue } from './components/ClarificationQueue';
 import { ClaimReview } from './components/ClaimReview';
@@ -379,6 +380,8 @@ export default function App() {
       </section>
 
       <KnowledgeAssistant apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} />
+
+      <AssessmentChat apiRoot={API_ROOT} namespace={namespace} />
 
       <GraphExplorer apiRoot={API_ROOT} namespace={namespace} onNamespaceChange={setNamespace} refreshVersion={graphRevision} />
 

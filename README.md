@@ -173,6 +173,14 @@ The graph refreshes after a successful upload or gap resolution. Node details sh
 
 LangGraph checkpoints are stored in the local SQLite file configured by `LANGGRAPH_CHECKPOINT_DB` and are ignored by Git.
 
+## Application lifecycle assessment
+
+The **Migration and retirement assessment** panel uses a separate LangGraph workflow. Select the same namespace used for your uploaded documents, enter the exact source application or service name shown in the graph, optionally enter a target, and choose **Start new assessment**. The workflow reads current claims, source excerpts, open gaps, and conflicts from Neo4j. It evaluates source dependencies, target discovery, capability parity, options, security and nonfunctional requirements, then a recommendation. Findings remain a draft until an architect reviews them.
+
+When a detail is missing, the workflow pauses and shows a question. Answer it (or say `unknown`) to resume the same assessment. Reviewers can approve a draft or request a revision with comments. The assessment ID is stored in the browser for the active namespace, and the LangGraph checkpoint lets the backend restore the assessment after refresh or restart. Clarifications are saved in assessment state; they do not automatically become facts in Neo4j.
+
+The API exposes `POST /api/assessments`, `GET /api/assessments/{id}`, `POST /api/assessments/{id}/answers`, and `POST /api/assessments/{id}/review`. The configured AI provider must be `azure_openai` or `tabnine_cli`; local rules mode supports document uploads only. The current POC uses a shared local password, so reviewer names are self reported. Source code ingestion, embeddings, SSO, PDF reports, and target capability catalogs described in the LLD are not yet connected. Missing target or policy evidence should appear as partial or in progress, not as a fabricated recommendation.
+
 ## Local URLs
 
 - Frontend: <http://localhost:5173>

@@ -14,6 +14,7 @@ from app.ai.answer_interpreter import AnswerInterpreter
 from app.ai.provider import build_structured_ai_client
 from app.ai.question_generator import QuestionGenerator
 from app.api.assistant import router as assistant_router
+from app.api.assessments import router as assessments_router
 from app.auth import COOKIE_NAME, LocalAuth, router as auth_router
 from app.api.claim_reviews import router as claim_reviews_router
 from app.api.conflicts import router as conflicts_router
@@ -29,6 +30,7 @@ from app.ai.entity_resolver import EntityResolver
 from app.assistant.answer_generator import AnswerGenerator
 from app.assistant.query_planner import QueryPlanner
 from app.assistant.service import KnowledgeAssistantService
+from app.assessment.workflow import AssessmentWorkflow
 from app.config import REPOSITORY_ROOT, get_settings
 from app.db.neo4j import Neo4jClient
 from app.db.schema import ensure_schema
@@ -60,6 +62,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.file_ingestion_unavailable_reason = "AI provider is unavailable"
     app.state.knowledge_assistant_service = None
     app.state.knowledge_assistant_unavailable_reason = "AI provider is unavailable"
+    app.state.assessment_workflow = None
+    app.state.assessment_unavailable_reason = "AI provider is unavailable"
     app.state.document_repository = DocumentRepository(app.state.neo4j)
     app.state.langgraph_checkpointer_context = None
 
@@ -125,16 +129,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 max_evidence_chars=settings.assistant_max_evidence_chars,
                 max_context_chars=settings.assistant_max_context_chars,
             )
+            app.state.assessment_workflow = AssessmentWorkflow(
+                repository=KnowledgeQueryRepository(app.state.neo4j),
+                ai_client=ai_client,
+                checkpointer=checkpointer,
+            )
             app.state.curation_unavailable_reason = None
             app.state.knowledge_assistant_unavailable_reason = None
+            app.state.assessment_unavailable_reason = None
         else:
             app.state.curation_unavailable_reason = "Local rules support document uploads only"
             app.state.knowledge_assistant_unavailable_reason = "Local rules support document uploads only"
+            app.state.assessment_unavailable_reason = "An AI provider is required for assessments"
         app.state.file_ingestion_unavailable_reason = None
     except AIProviderError as error:
         app.state.curation_unavailable_reason = str(error)
         app.state.file_ingestion_unavailable_reason = str(error)
         app.state.knowledge_assistant_unavailable_reason = str(error)
+        app.state.assessment_unavailable_reason = str(error)
         logger.warning("AI-backed workflows unavailable: %s", error)
 
     try:
@@ -182,6 +194,7 @@ def create_app() -> FastAPI:
     app.include_router(graph_router)
     app.include_router(conflicts_router)
     app.include_router(assistant_router)
+    app.include_router(assessments_router)
     app.include_router(claim_reviews_router)
     return app
 
