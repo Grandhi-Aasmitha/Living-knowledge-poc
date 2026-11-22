@@ -33,12 +33,6 @@ class StepFinding(BaseModel):
     prerequisites: list[str] = Field(default_factory=list, max_length=8)
 
 
-class ClarificationDecision(BaseModel):
-    required: bool
-    question: str | None = None
-    reason: str = ""
-
-
 class Finding(BaseModel):
     stage: AssessmentStage
     summary: str

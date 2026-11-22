@@ -1,7 +1,7 @@
 import asyncio
 from langgraph.checkpoint.memory import MemorySaver
 
-from app.assessment.models import ClarificationDecision, StepFinding, STAGES
+from app.assessment.models import StepFinding, STAGES
 from app.assessment.workflow import AssessmentWorkflow
 from app.assistant.models import EntityResolution, MatchedEntity, RetrievedClaim, RetrievedEvidence
 from app.domain.enums import ClaimStatus
@@ -39,10 +39,6 @@ class FakeAI:
     async def generate_structured(self, prompt, response_model):
         import json
         context = json.loads(prompt)
-        if response_model is ClarificationDecision:
-            if context["stage"] == "SECURITY_AND_NFR" and not context["prior_clarifications"]:
-                return ClarificationDecision(required=True, question=f"What security requirements apply to {context['source_application']}?")
-            return ClarificationDecision(required=False)
         if context["stage"] == STAGES[0] and not context["clarifications"]:
             return StepFinding(summary="Dependency found; operating details missing.", completeness="PARTIAL",
                                claim_ids=["claim-1"], evidence_ids=["evidence-1"],
@@ -58,7 +54,6 @@ def test_assessment_pauses_resumes_reviews_and_restores_checkpoint():
         first = await workflow.start("a1", "team", "Source App", None)
         assert first.status == "WAITING_FOR_INPUT"
         assert first.current_stage == "SECURITY_AND_NFR"
-        assert first.question == "What security requirements apply to Source App?"
         assert first.target_discovery_status == "NO_SUITABLE_TARGET"
         assert first.findings[1].stage == "TARGET_DISCOVERY"
         restored = AssessmentWorkflow(FakeRepository(), FakeAI(), checkpointer)
@@ -97,14 +92,5 @@ def test_optional_repository_question_does_not_pause_source_analysis():
         assert result.current_stage == "SECURITY_AND_NFR"
         assert result.findings[0].stage == "SOURCE_AND_DEPENDENCIES"
         assert "repository" not in (result.question or "").lower()
-
-    asyncio.run(scenario())
-
-
-def test_clarification_names_the_application_being_assessed():
-    async def scenario():
-        workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), MemorySaver())
-        result = await workflow.start("a5", "team", "Another App", None)
-        assert result.question == "What security requirements apply to Another App?"
 
     asyncio.run(scenario())
