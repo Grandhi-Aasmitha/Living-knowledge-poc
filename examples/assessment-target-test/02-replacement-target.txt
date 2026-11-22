@@ -1,6 +1,0 @@
-Northstar order platform — proposed replacement
-Record date: 2026-10-05. Status: proposed target design, not production approval.
-
-Northstar Commerce Service replaces Northstar Order Service as the proposed target for order acceptance. Northstar Commerce Service calls Northstar Billing API for payment authorization, writes accepted order records to Northstar Orders Database, and publishes accepted orders to Northstar Order Events Topic. These are the three current functions that must retain parity during migration.
-
-Northstar Commerce Team owns Northstar Commerce Service. The proposed target is not yet approved for production. The design does not establish that historical order data has been migrated or that performance has been tested at peak load.

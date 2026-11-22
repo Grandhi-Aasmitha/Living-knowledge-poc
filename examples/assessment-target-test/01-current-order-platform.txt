@@ -1,6 +1,0 @@
-Northstar order platform — current-state architecture
-Record date: 2026-10-01. Status: approved current-state record.
-
-Northstar Order Service accepts customer orders and calls Northstar Billing API to authorize payment. Northstar Order Service writes order records to Northstar Orders Database. Northstar Order Service publishes accepted orders to Northstar Order Events Topic. Northstar Fulfillment Service consumes Northstar Order Events Topic to begin fulfillment.
-
-Northstar Commerce Team owns Northstar Order Service. Northstar Data Team owns Northstar Orders Database. Northstar Order Service depends on Northstar Billing API and Northstar Orders Database. A failed payment authorization prevents the order from being accepted; an accepted order must be written before its event is published.

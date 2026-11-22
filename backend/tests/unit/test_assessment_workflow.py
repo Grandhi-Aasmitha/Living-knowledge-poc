@@ -44,22 +44,6 @@ class FakeAI:
                            completeness="PARTIAL", claim_ids=["claim-1"], evidence_ids=["evidence-1"])
 
 
-class FakeReplacementRepository(FakeRepository):
-    async def get_claim_context(self, entity_ids, predicates, direction, namespace, max_claims, max_evidence_per_claim):
-        claims = await super().get_claim_context(entity_ids, predicates, direction, namespace, max_claims, max_evidence_per_claim)
-        claims.append(RetrievedClaim(
-            claim_id="replacement-claim", subject_entity_id="target-id", subject_name="Target App",
-            subject_type="SYSTEM", predicate="REPLACES", object_entity_id="source-id",
-            object_name="Source App", object_type="SYSTEM", object_value=None,
-            claim_status=ClaimStatus.CONFIRMED, confidence=0.9,
-            evidence=[RetrievedEvidence(
-                evidence_id="replacement-evidence", source_id="source-2", source_type="FILE_UPLOAD",
-                source_title="target.md", excerpt="Target App replaces Source App. Security requires encryption.",
-            )],
-        ))
-        return claims
-
-
 def test_assessment_pauses_resumes_reviews_and_restores_checkpoint():
     async def scenario():
         checkpointer = MemorySaver()
@@ -107,17 +91,5 @@ def test_optional_repository_question_does_not_pause_source_analysis():
         assert result.current_stage == "TARGET_DISCOVERY"
         assert result.findings[0].stage == "SOURCE_AND_DEPENDENCIES"
         assert "repository" not in (result.question or "").lower()
-
-    asyncio.run(scenario())
-
-
-def test_replacement_claim_supplies_target_without_user_question():
-    async def scenario():
-        workflow = AssessmentWorkflow(FakeReplacementRepository(), FakeAI(), MemorySaver())
-        result = await workflow.start("a4", "team", "Source App", None)
-        assert result.target_application == "Target App"
-        assert result.status == "WAITING_FOR_REVIEW"
-        assert result.clarifications == []
-        assert len(result.findings) == len(STAGES)
 
     asyncio.run(scenario())

@@ -1,8 +1,0 @@
-Northstar order platform — migration and retirement controls
-Record date: 2026-10-08. Status: draft migration controls.
-
-The proposed migration uses a staged cutover from Northstar Order Service to Northstar Commerce Service. Before cutover, the team must verify payment authorization through Northstar Billing API, successful writes to Northstar Orders Database, and publication to Northstar Order Events Topic. Northstar Fulfillment Service must continue consuming the topic without missing accepted orders.
-
-Security requirements for Northstar Commerce Service include encryption of customer order data in transit and at rest. Availability and performance requirements require a measured peak-load test and a rollback plan before production approval. The current documents do not provide peak-load test results or a confirmed rollback procedure.
-
-Decommissioning Northstar Order Service is conditional. It can be retired only after the target is approved, historical order access is verified, production traffic has moved, monitoring shows no missed orders, and the rollback window has closed. Northstar Orders Database and Northstar Billing API remain in use and must not be decommissioned as part of this service replacement.
