@@ -41,6 +41,7 @@ export function AssessmentChat({ apiRoot, namespace }: { apiRoot: string; namesp
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const recommendation = assessment?.findings.find((finding) => finding.stage === 'RECOMMENDATION');
 
   useEffect(() => {
     setAssessment(null);
@@ -110,10 +111,10 @@ export function AssessmentChat({ apiRoot, namespace }: { apiRoot: string; namesp
       {message && <p className="message" role="alert">{message}</p>}
       {assessment && <div className="assessment-thread">
         <p><strong>{assessment.source_application}</strong>{assessment.target_application ? ` → ${assessment.target_application}` : ''} · {assessment.status.replaceAll('_', ' ')}</p>
-        {assessment.target_discovery_status === 'SUGGESTED' && <p className="message">Suggested target from shared documented capabilities. Review the evidence before approving a decision.</p>}
-        {assessment.target_discovery_status === 'NO_SUITABLE_TARGET' && <p className="message">No sufficiently supported target application was found in this namespace.</p>}
-        {assessment.target_discovery_status === 'MULTIPLE_CANDIDATES' && <p className="message">Several applications share capabilities. No target was selected automatically.</p>}
-        {assessment.target_suggestions.length > 0 && <details><summary>Candidate applications ({assessment.target_suggestions.length})</summary>
+        {recommendation && assessment.target_discovery_status === 'SUGGESTED' && <p className="message">Suggested target from shared documented capabilities. Review the evidence before approving a decision.</p>}
+        {recommendation && assessment.target_discovery_status === 'NO_SUITABLE_TARGET' && <p className="message">No sufficiently supported target application was found in this namespace.</p>}
+        {recommendation && assessment.target_discovery_status === 'MULTIPLE_CANDIDATES' && <p className="message">Several applications share capabilities. No target was selected automatically.</p>}
+        {recommendation && assessment.target_suggestions.length > 0 && <details><summary>Candidate applications ({assessment.target_suggestions.length})</summary>
           {assessment.target_suggestions.map((candidate) => <div className="assessment-source" key={candidate.entity_id}>
             <strong>{candidate.name}</strong>
             <p>Matches {candidate.matched_count} of {candidate.source_capability_count} documented source relationships.</p>
@@ -122,24 +123,21 @@ export function AssessmentChat({ apiRoot, namespace }: { apiRoot: string; namesp
             {assessment.target_application !== candidate.name && <button type="button" disabled={busy} onClick={() => void send('', { namespace: assessment.namespace, source_application: assessment.source_application, target_application: candidate.name })}>Assess this candidate</button>}
           </div>)}
         </details>}
-        {assessment.context_limited && <p className="message">The knowledge context reached its size limit. Review the evidence before approving.</p>}
-        {assessment.clarifications.map((item, index) => <div className="assessment-exchange" key={`${item.stage}-${index}`}>
-          <p><strong>Advisor:</strong> {item.question}</p><p><strong>You:</strong> {item.answer}</p>
-        </div>)}
-        {assessment.findings.map((finding) => <article className="assessment-finding" key={finding.stage}>
-          <h3>{stageLabel(finding.stage)}</h3>
-          <span className="badge">{finding.completeness}</span>
-          {finding.outcome && <span className="badge">{finding.outcome.replaceAll('_', ' ')}</span>}
-          <p>{finding.summary}</p>
-          {finding.risks.length > 0 && <div><strong>Risks</strong><ul>{finding.risks.map((risk, index) => <li key={index}>{risk}</li>)}</ul></div>}
-          {finding.prerequisites.length > 0 && <div><strong>Prerequisites</strong><ul>{finding.prerequisites.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-          {finding.claim_ids.length > 0 && <details><summary>Supporting knowledge ({finding.claim_ids.length} claims)</summary>
-            {assessment.evidence.filter((row) => finding.claim_ids.includes(row.claim_id)).map((row) => <div key={row.claim_id} className="assessment-source">
+        {recommendation && assessment.context_limited && <p className="message">The knowledge context reached its size limit. Review the evidence before approving.</p>}
+        {recommendation && <article className="assessment-finding">
+          <h3>Recommendation</h3>
+          <span className="badge">{recommendation.completeness}</span>
+          {recommendation.outcome && <span className="badge">{recommendation.outcome.replaceAll('_', ' ')}</span>}
+          <p>{recommendation.summary}</p>
+          {recommendation.risks.length > 0 && <div><strong>Risks</strong><ul>{recommendation.risks.map((risk, index) => <li key={index}>{risk}</li>)}</ul></div>}
+          {recommendation.prerequisites.length > 0 && <div><strong>Prerequisites</strong><ul>{recommendation.prerequisites.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
+          {recommendation.claim_ids.length > 0 && <details><summary>Supporting knowledge ({recommendation.claim_ids.length} claims)</summary>
+            {assessment.evidence.filter((row) => recommendation.claim_ids.includes(row.claim_id)).map((row) => <div key={row.claim_id} className="assessment-source">
               <strong>{row.subject} {row.predicate.replaceAll('_', ' ')} {row.object}</strong> <span className="badge">{row.status}</span>
-              {row.sources.filter((sourceItem) => finding.evidence_ids.includes(sourceItem.evidence_id)).map((sourceItem) => <p key={sourceItem.evidence_id}>{sourceItem.title}{sourceItem.version ? `, v${sourceItem.version}` : ''}{sourceItem.locator ? ` · ${sourceItem.locator}` : ''}{sourceItem.excerpt ? ` — ${sourceItem.excerpt}` : ''}</p>)}
+              {row.sources.filter((sourceItem) => recommendation.evidence_ids.includes(sourceItem.evidence_id)).map((sourceItem) => <p key={sourceItem.evidence_id}>{sourceItem.title}{sourceItem.version ? `, v${sourceItem.version}` : ''}{sourceItem.locator ? ` · ${sourceItem.locator}` : ''}{sourceItem.excerpt ? ` — ${sourceItem.excerpt}` : ''}</p>)}
             </div>)}
           </details>}
-        </article>)}
+        </article>}
         {assessment.status === 'WAITING_FOR_INPUT' && <form className="answer-form" onSubmit={reply}>
           <p><strong>Advisor asks ({stageLabel(assessment.current_stage ?? '')}):</strong> {assessment.question}</p>
           <label htmlFor="assessment-answer">Your answer</label>
