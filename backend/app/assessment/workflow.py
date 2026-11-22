@@ -103,11 +103,26 @@ class AssessmentWorkflow:
             raise ValueError("Source application was not found in this namespace")
         if len(resolutions[0].matches) > 1:
             raise ValueError("Source application name is ambiguous")
-        target_found = bool(len(resolutions) > 1 and resolutions[1].matches)
         entity_ids = [match.id for resolution in resolutions for match in resolution.matches]
         claims = await self._repository.get_claim_context(
             entity_ids, [], QueryDirection.BOTH, state["namespace"], 40, 2,
         )
+        inferred_targets = {
+            (claim.subject_name, claim.subject_entity_id)
+            for claim in claims
+            if claim.predicate == "REPLACES" and claim.object_name
+            and claim.object_name.casefold() == state["source_application"].casefold()
+        } | {
+            (claim.object_name, claim.object_entity_id)
+            for claim in claims
+            if claim.predicate == "TRANSFORMS_TO" and claim.object_name and claim.object_entity_id
+            and claim.subject_name.casefold() == state["source_application"].casefold()
+        }
+        inferred_target = next(iter(inferred_targets)) if not state.get("target_application") and len(inferred_targets) == 1 else None
+        target_application = state.get("target_application") or (inferred_target[0] if inferred_target else None)
+        target_found = bool(len(resolutions) > 1 and resolutions[1].matches) or inferred_target is not None
+        if inferred_target and inferred_target[1] not in entity_ids:
+            entity_ids.append(inferred_target[1])
         limited = len(claims) >= 40
         bridge_ids = list(dict.fromkeys(
             entity_id for claim in claims for entity_id in (claim.subject_entity_id, claim.object_entity_id)
@@ -136,6 +151,7 @@ class AssessmentWorkflow:
             evidence.pop()
         return {
             **state, "evidence": evidence, "context_limited": limited, "target_found": target_found,
+            "target_application": target_application,
             "_gaps": [gap.model_dump(mode="json") for gap in gaps],
             "_conflicts": [conflict.model_dump(mode="json") for conflict in conflicts],
         }
@@ -200,12 +216,7 @@ class AssessmentWorkflow:
         ):
             return f"What are the known dependencies or integrations of {state['source_application']}? Say unknown if these are not documented."
         if stage == "TARGET_DISCOVERY":
-            replacement_known = any(
-                row["predicate"] in {"REPLACES", "TRANSFORMS_TO"}
-                and source_name in {str(row["subject"]).casefold(), str(row.get("object") or "").casefold()}
-                for row in evidence
-            )
-            if not state.get("target_application") and not replacement_known:
+            if not state.get("target_application"):
                 return "Is there a proposed replacement target for this application, or is retirement without replacement being considered? Say unknown if undecided."
             if not state.get("target_found"):
                 return f"What verified capabilities does the proposed target {state['target_application']} have? Say unknown if they are not documented."
