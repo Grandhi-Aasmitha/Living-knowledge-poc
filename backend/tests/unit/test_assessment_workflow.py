@@ -50,13 +50,17 @@ def test_assessment_pauses_resumes_reviews_and_restores_checkpoint():
         workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), checkpointer)
         first = await workflow.start("a1", "team", "Source App", None)
         assert first.status == "WAITING_FOR_INPUT"
-        assert first.question == "Who operates the source app?"
+        assert first.current_stage == "TARGET_DISCOVERY"
+        assert "proposed replacement target" in first.question
         restored = AssessmentWorkflow(FakeRepository(), FakeAI(), checkpointer)
         assert (await restored.get("a1")).status == "WAITING_FOR_INPUT"
-        draft = await restored.answer("a1", "Operations Team")
+        draft = await restored.answer("a1", "No replacement is planned")
+        assert draft.status == "WAITING_FOR_INPUT"
+        assert draft.current_stage == "SECURITY_AND_NFR"
+        draft = await restored.answer("a1", "Security requirements are not documented")
         assert draft.status == "WAITING_FOR_REVIEW"
         assert len(draft.findings) == len(STAGES)
-        assert draft.clarifications[0]["answer"] == "Operations Team"
+        assert draft.clarifications[0]["answer"] == "No replacement is planned"
         approved = await restored.review("a1", "APPROVE", "Architect", "Evidence checked")
         assert approved.status == "APPROVED"
         assert approved.review_history[0]["reviewer"] == "Architect"
@@ -68,12 +72,24 @@ def test_revision_restarts_assessment_and_preserves_review_history():
     async def scenario():
         workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), MemorySaver())
         await workflow.start("a2", "team", "Source App", None)
-        draft = await workflow.answer("a2", "Operations Team")
+        await workflow.answer("a2", "No replacement is planned")
+        draft = await workflow.answer("a2", "Security requirements are not documented")
         assert draft.status == "WAITING_FOR_REVIEW"
         revised = await workflow.review("a2", "REVISE", "Architect", "Check the retirement option")
         assert revised.status == "WAITING_FOR_REVIEW"
         assert len(revised.findings) == len(STAGES)
         assert revised.review_history[-1]["comment"] == "Check the retirement option"
         assert (await workflow.get("a2")).review_history[-1]["decision"] == "REVISE"
+
+    asyncio.run(scenario())
+
+
+def test_optional_repository_question_does_not_pause_source_analysis():
+    async def scenario():
+        workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), MemorySaver())
+        result = await workflow.start("a3", "team", "Source App", None)
+        assert result.current_stage == "TARGET_DISCOVERY"
+        assert result.findings[0].stage == "SOURCE_AND_DEPENDENCIES"
+        assert "repository" not in (result.question or "").lower()
 
     asyncio.run(scenario())
