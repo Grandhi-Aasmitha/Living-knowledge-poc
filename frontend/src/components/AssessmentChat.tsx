@@ -16,6 +16,8 @@ type Assessment = {
   namespace: string;
   source_application: string;
   target_application: string | null;
+  target_discovery_status: 'PROVIDED' | 'SUGGESTED' | 'MULTIPLE_CANDIDATES' | 'NO_SUITABLE_TARGET' | null;
+  target_suggestions: { entity_id: string; name: string; matched_count: number; source_capability_count: number; coverage: number; matched_capabilities: string[]; supporting_evidence: { claim_id: string; title: string; excerpt: string | null }[] }[];
   status: 'RUNNING' | 'WAITING_FOR_INPUT' | 'WAITING_FOR_REVIEW' | 'APPROVED';
   current_stage: string | null;
   question: string | null;
@@ -108,6 +110,18 @@ export function AssessmentChat({ apiRoot, namespace }: { apiRoot: string; namesp
       {message && <p className="message" role="alert">{message}</p>}
       {assessment && <div className="assessment-thread">
         <p><strong>{assessment.source_application}</strong>{assessment.target_application ? ` → ${assessment.target_application}` : ''} · {assessment.status.replaceAll('_', ' ')}</p>
+        {assessment.target_discovery_status === 'SUGGESTED' && <p className="message">Suggested target from shared documented capabilities. Review the evidence before approving a decision.</p>}
+        {assessment.target_discovery_status === 'NO_SUITABLE_TARGET' && <p className="message">No sufficiently supported target application was found in this namespace.</p>}
+        {assessment.target_discovery_status === 'MULTIPLE_CANDIDATES' && <p className="message">Several applications share capabilities. No target was selected automatically.</p>}
+        {assessment.target_suggestions.length > 0 && <details><summary>Candidate applications ({assessment.target_suggestions.length})</summary>
+          {assessment.target_suggestions.map((candidate) => <div className="assessment-source" key={candidate.entity_id}>
+            <strong>{candidate.name}</strong>
+            <p>Matches {candidate.matched_count} of {candidate.source_capability_count} documented source relationships.</p>
+            <ul>{candidate.matched_capabilities.map((capability) => <li key={capability}>{capability}</li>)}</ul>
+            {candidate.supporting_evidence.map((sourceItem) => <p key={sourceItem.claim_id}><strong>Source:</strong> {sourceItem.title}{sourceItem.excerpt ? ` — ${sourceItem.excerpt}` : ''}</p>)}
+            {assessment.target_application !== candidate.name && <button type="button" disabled={busy} onClick={() => void send('', { namespace: assessment.namespace, source_application: assessment.source_application, target_application: candidate.name })}>Assess this candidate</button>}
+          </div>)}
+        </details>}
         {assessment.context_limited && <p className="message">The knowledge context reached its size limit. Review the evidence before approving.</p>}
         {assessment.clarifications.map((item, index) => <div className="assessment-exchange" key={`${item.stage}-${index}`}>
           <p><strong>Advisor:</strong> {item.question}</p><p><strong>You:</strong> {item.answer}</p>

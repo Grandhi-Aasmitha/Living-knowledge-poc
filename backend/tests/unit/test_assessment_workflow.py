@@ -8,6 +8,9 @@ from app.domain.enums import ClaimStatus
 
 
 class FakeRepository:
+    async def list_application_capabilities(self, namespace):
+        return []
+
     async def resolve_entities(self, names, namespace):
         return [EntityResolution(requested_name=name, matches=[MatchedEntity(
             id="source-id", label=name, entity_type="SYSTEM", namespace=namespace,
@@ -50,17 +53,16 @@ def test_assessment_pauses_resumes_reviews_and_restores_checkpoint():
         workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), checkpointer)
         first = await workflow.start("a1", "team", "Source App", None)
         assert first.status == "WAITING_FOR_INPUT"
-        assert first.current_stage == "TARGET_DISCOVERY"
-        assert "proposed replacement target" in first.question
+        assert first.current_stage == "SECURITY_AND_NFR"
+        assert first.target_discovery_status == "NO_SUITABLE_TARGET"
+        assert first.findings[1].stage == "TARGET_DISCOVERY"
         restored = AssessmentWorkflow(FakeRepository(), FakeAI(), checkpointer)
         assert (await restored.get("a1")).status == "WAITING_FOR_INPUT"
-        draft = await restored.answer("a1", "No replacement is planned")
-        assert draft.status == "WAITING_FOR_INPUT"
-        assert draft.current_stage == "SECURITY_AND_NFR"
         draft = await restored.answer("a1", "Security requirements are not documented")
         assert draft.status == "WAITING_FOR_REVIEW"
         assert len(draft.findings) == len(STAGES)
-        assert draft.clarifications[0]["answer"] == "No replacement is planned"
+        assert draft.clarifications[0]["answer"] == "Security requirements are not documented"
+        assert draft.findings[-1].outcome == "NEEDS_REVIEW"
         approved = await restored.review("a1", "APPROVE", "Architect", "Evidence checked")
         assert approved.status == "APPROVED"
         assert approved.review_history[0]["reviewer"] == "Architect"
@@ -72,7 +74,6 @@ def test_revision_restarts_assessment_and_preserves_review_history():
     async def scenario():
         workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), MemorySaver())
         await workflow.start("a2", "team", "Source App", None)
-        await workflow.answer("a2", "No replacement is planned")
         draft = await workflow.answer("a2", "Security requirements are not documented")
         assert draft.status == "WAITING_FOR_REVIEW"
         revised = await workflow.review("a2", "REVISE", "Architect", "Check the retirement option")
@@ -88,7 +89,7 @@ def test_optional_repository_question_does_not_pause_source_analysis():
     async def scenario():
         workflow = AssessmentWorkflow(FakeRepository(), FakeAI(), MemorySaver())
         result = await workflow.start("a3", "team", "Source App", None)
-        assert result.current_stage == "TARGET_DISCOVERY"
+        assert result.current_stage == "SECURITY_AND_NFR"
         assert result.findings[0].stage == "SOURCE_AND_DEPENDENCIES"
         assert "repository" not in (result.question or "").lower()
 

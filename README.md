@@ -181,6 +181,8 @@ When a detail is missing, the workflow pauses and shows a question. Answer it (o
 
 The API exposes `POST /api/assessments`, `GET /api/assessments/{id}`, `POST /api/assessments/{id}/answers`, and `POST /api/assessments/{id}/review`. The configured AI provider must be `azure_openai` or `tabnine_cli`; local rules mode supports document uploads only. The current POC uses a shared local password, so reviewer names are self reported. Source code ingestion, embeddings, SSO, PDF reports, and target capability catalogs described in the LLD are not yet connected. Missing target or policy evidence should appear as partial or in progress, not as a fabricated recommendation.
 
+When the target field is blank, the assessment compares current, source-backed application relationships in the selected namespace. It suggests applications with matching functions and selects one only when at least two relationships match, at least half of the source's documented relationships are covered, and the leading candidate is distinct. The UI shows the matched functions and source evidence. If no candidate meets that threshold, it explicitly reports that no sufficiently supported target was found; a person can select a candidate for a new assessment. A suggested target is a hypothesis for review, not proof of migration readiness or permission to decommission the source.
+
 ## Local URLs
 
 - Frontend: <http://localhost:5173>

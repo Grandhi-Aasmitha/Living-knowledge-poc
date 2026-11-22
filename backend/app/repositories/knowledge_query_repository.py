@@ -19,6 +19,31 @@ class KnowledgeQueryRepository:
     def __init__(self, client: Neo4jClient) -> None:
         self._client = client
 
+    async def list_application_capabilities(self, namespace: str) -> list[dict[str, Any]]:
+        """Return current, evidenced outgoing application relationships for target comparison."""
+        async with self._client.session() as session:
+            result = await session.run(
+                """
+                MATCH (claim:Claim)-[:SUBJECT]->(entity:Entity {namespace: $namespace, status: 'ACTIVE'})
+                MATCH (claim)-[:OBJECT]->(object:Entity {namespace: $namespace, status: 'ACTIVE'})
+                WHERE entity.entity_type IN ['SERVICE', 'SYSTEM']
+                  AND claim.status IN ['CONFIRMED', 'PROPOSED']
+                  AND (claim.valid_from IS NULL OR datetime(claim.valid_from) <= datetime())
+                  AND (claim.valid_to IS NULL OR datetime(claim.valid_to) > datetime())
+                  AND EXISTS { MATCH (claim)-[:SUPPORTED_BY]->(evidence:Evidence) WHERE coalesce(evidence.is_current, true) }
+                RETURN entity.id AS entity_id, entity.canonical_name AS entity_name,
+                       claim.id AS claim_id, claim.predicate AS predicate,
+                       object.id AS object_id, object.canonical_name AS object_name
+                ORDER BY entity.id, claim.id
+                LIMIT 2001
+                """,
+                namespace=namespace,
+            )
+            rows = await result.data()
+            if len(rows) > 2000:
+                raise ValueError("Too many application relationships in this namespace for a reliable target search")
+            return rows
+
     async def resolve_entities(self, names: list[str], namespace: str) -> list[EntityResolution]:
         resolutions: list[EntityResolution] = []
         async with self._client.session() as session:

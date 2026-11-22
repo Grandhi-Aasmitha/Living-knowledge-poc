@@ -49,6 +49,8 @@ class AssessmentView(BaseModel):
     namespace: str
     source_application: str
     target_application: str | None = None
+    target_discovery_status: Literal["PROVIDED", "SUGGESTED", "MULTIPLE_CANDIDATES", "NO_SUITABLE_TARGET"] | None = None
+    target_suggestions: list[dict] = Field(default_factory=list)
     status: Literal["RUNNING", "WAITING_FOR_INPUT", "WAITING_FOR_REVIEW", "APPROVED"]
     current_stage: AssessmentStage | None = None
     question: str | None = None

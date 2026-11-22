@@ -7,6 +7,7 @@ from langgraph.types import Command, interrupt
 
 from app.ai.client import AIProviderError, StructuredAIClient
 from app.assessment.models import AssessmentView, Finding, STAGES, StepFinding
+from app.assessment.target_discovery import rank_targets, select_supported_target
 from app.assistant.models import QueryDirection
 from app.repositories.knowledge_query_repository import KnowledgeQueryRepository
 
@@ -17,6 +18,8 @@ class AssessmentState(TypedDict, total=False):
     source_application: str
     target_application: str | None
     target_found: bool
+    target_discovery_status: str | None
+    target_suggestions: list[dict[str, Any]]
     status: str
     stage_index: int
     question: str | None
@@ -101,10 +104,28 @@ class AssessmentWorkflow:
         resolutions = await self._repository.resolve_entities(names, state["namespace"])
         if not resolutions[0].matches:
             raise ValueError("Source application was not found in this namespace")
-        if len(resolutions[0].matches) > 1:
+        source_matches = [match for match in resolutions[0].matches if match.entity_type in {"SERVICE", "SYSTEM"}]
+        if len(source_matches) != 1:
             raise ValueError("Source application name is ambiguous")
-        target_found = bool(len(resolutions) > 1 and resolutions[1].matches)
-        entity_ids = [match.id for resolution in resolutions for match in resolution.matches]
+        source_id = source_matches[0].id
+        entity_ids = [source_id]
+        target_application = state.get("target_application")
+        suggestions: list[dict[str, Any]] = []
+        discovery_status = "PROVIDED" if target_application else "NO_SUITABLE_TARGET"
+        target_matches = [match for match in resolutions[1].matches if match.entity_type in {"SERVICE", "SYSTEM"}] if len(resolutions) > 1 else []
+        target_found = len(target_matches) == 1
+        if target_found:
+            entity_ids.append(target_matches[0].id)
+        if not target_application:
+            suggestions = rank_targets(source_id, await self._repository.list_application_capabilities(state["namespace"]))
+            selected = select_supported_target(suggestions)
+            if selected:
+                target_application = selected["name"]
+                entity_ids.append(selected["entity_id"])
+                target_found = True
+                discovery_status = "SUGGESTED"
+            elif len(suggestions) > 1:
+                discovery_status = "MULTIPLE_CANDIDATES"
         claims = await self._repository.get_claim_context(
             entity_ids, [], QueryDirection.BOTH, state["namespace"], 40, 2,
         )
@@ -134,8 +155,17 @@ class AssessmentWorkflow:
         limited = limited or len(claims) >= 60 or len(json.dumps(evidence)) > 30000
         while evidence and len(json.dumps(evidence)) > 30000:
             evidence.pop()
+        evidence_by_claim = {row["claim_id"]: row for row in evidence}
+        for suggestion in suggestions:
+            suggestion["supporting_evidence"] = [
+                {"claim_id": claim_id, "title": source["title"], "excerpt": source["excerpt"]}
+                for claim_id in suggestion["claim_ids"]
+                for source in evidence_by_claim.get(claim_id, {}).get("sources", [])[:1]
+            ]
         return {
             **state, "evidence": evidence, "context_limited": limited, "target_found": target_found,
+            "target_application": target_application, "target_discovery_status": discovery_status,
+            "target_suggestions": suggestions,
             "_gaps": [gap.model_dump(mode="json") for gap in gaps],
             "_conflicts": [conflict.model_dump(mode="json") for conflict in conflicts],
         }
@@ -143,7 +173,10 @@ class AssessmentWorkflow:
     async def _evaluate_stage(self, state: AssessmentState) -> AssessmentState:
         stage = STAGES[state["stage_index"]]
         prior_answer = next((row["answer"] for row in reversed(state.get("clarifications", [])) if row["stage"] == stage), None)
-        if stage == "TARGET_DISCOVERY" and state.get("target_application") and not state.get("target_found") and prior_answer is None:
+        if stage == "TARGET_DISCOVERY" and state.get("target_discovery_status") in {"NO_SUITABLE_TARGET", "MULTIPLE_CANDIDATES"}:
+            detail = "No sufficiently supported target application was found" if state["target_discovery_status"] == "NO_SUITABLE_TARGET" else "Several possible targets were found, but none can be selected safely"
+            finding = StepFinding(summary=f"{detail} in this namespace. Review candidate suggestions and provide a target for a new assessment if appropriate.", completeness="IN_PROGRESS")
+        elif stage == "TARGET_DISCOVERY" and state.get("target_application") and not state.get("target_found") and prior_answer is None:
             finding = StepFinding(
                 summary="The named target was not found in the selected knowledge namespace.",
                 completeness="IN_PROGRESS",
@@ -160,6 +193,8 @@ class AssessmentWorkflow:
                 "stage": stage, "source_application": state["source_application"],
                 "target_application": state.get("target_application"),
                 "target_found_in_knowledge_base": state.get("target_found", False),
+                "target_discovery_status": state.get("target_discovery_status"),
+                "target_suggestions": state.get("target_suggestions", []),
                 "evidence": state.get("evidence", []), "open_gaps": state.get("_gaps", []),
                 "open_conflicts": state.get("_conflicts", []),
                 "prior_findings": state.get("findings", []),
@@ -178,6 +213,8 @@ class AssessmentWorkflow:
             finding = finding.model_copy(update={"completeness": "PARTIAL"})
         if stage == "RECOMMENDATION" and finding.outcome is None:
             finding = finding.model_copy(update={"outcome": "NEEDS_REVIEW"})
+        if stage == "RECOMMENDATION" and not state.get("target_application"):
+            finding = finding.model_copy(update={"outcome": "NEEDS_REVIEW", "completeness": "IN_PROGRESS"})
         blocking_question = self._blocking_question(state, stage, prior_answer)
         if blocking_question:
             return {**state, "question": blocking_question, "status": "WAITING_FOR_INPUT"}
@@ -200,6 +237,8 @@ class AssessmentWorkflow:
         ):
             return f"What are the known dependencies or integrations of {state['source_application']}? Say unknown if these are not documented."
         if stage == "TARGET_DISCOVERY":
+            if state.get("target_discovery_status") in {"NO_SUITABLE_TARGET", "MULTIPLE_CANDIDATES"}:
+                return None
             replacement_known = any(
                 row["predicate"] in {"REPLACES", "TRANSFORMS_TO"}
                 and source_name in {str(row["subject"]).casefold(), str(row.get("object") or "").casefold()}
@@ -264,6 +303,8 @@ class AssessmentWorkflow:
         return AssessmentView(
             assessment_id=state["assessment_id"], namespace=state["namespace"],
             source_application=state["source_application"], target_application=state.get("target_application"),
+            target_discovery_status=state.get("target_discovery_status"),
+            target_suggestions=state.get("target_suggestions", []),
             status=status, current_stage=STAGES[index] if index < len(STAGES) else None,
             question=state.get("question"), findings=state.get("findings", []),
             clarifications=state.get("clarifications", []), review_history=state.get("review_history", []),
